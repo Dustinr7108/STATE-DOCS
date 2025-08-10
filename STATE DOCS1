@@ -1,0 +1,728 @@
+import os, requests, pandas as pd
+
+APP_TOKEN   = os.environ["NY_DATA_APP_TOKEN"]
+DATASET_ID  = "7jkw-gj56"          # example: NY COVID vaccination counts
+API_HOST    = "https://data.ny.gov"
+
+def get_chunk(offset=0, limit=50000):
+    url = f"{API_HOST}/resource/{DATASET_ID}.json"
+    headers = {"X-App-Token": APP_TOKEN}
+    params  = {"$limit": limit, "$offset": offset, "$order": "updated_at"}
+    return requests.get(url, headers=headers, params=params, timeout=30).json()
+
+df = pd.DataFrame(get_chunk())      # ← hand off to normalizer
+npm i stripe express body-parser cors
+// server.js
+import express from "express";
+import Stripe from "stripe";
+import bodyParser from "body-parser";
+import cors from "cors";
+
+const app = express();
+app.use(cors({ origin: process.env.CLIENT_URL }));
+app.use(express.json());
+
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
+  apiVersion: "2024-06-20",
+});
+
+// 1) Start checkout for the trial
+app.post("/api/billing/checkout", async (req, res) => {
+  const { email, userId } = req.body; // userId from your auth system
+  const session = await stripe.checkout.sessions.create({
+    mode: "subscription",
+    customer_email: email,
+    line_items: [{ price: process.env.STRIPE_PRICE_ID, quantity: 1 }],
+    // 7-day trial is set on the Price in dashboard → no trial config here
+    success_url: `${process.env.CLIENT_URL}/billing/success?sid={CHECKOUT_SESSION_ID}`,
+    cancel_url: `${process.env.CLIENT_URL}/billing/cancel`,
+    metadata: { userId },
+  });
+  res.json({ url: session.url });
+});
+
+// 2) Webhook to flip access on/off
+app.post(
+  "/api/billing/webhook",
+  bodyParser.raw({ type: "application/json" }),
+  async (req, res) => {
+    const sig = req.headers["stripe-signature"];
+    let event;
+    try {
+      event = stripe.webhooks.constructEvent(
+        req.body,
+        sig,
+        process.env.STRIPE_WEBHOOK_SECRET
+      );
+    } catch (err) {
+      return res.status(400).send(`Webhook Error: ${err.message}`);
+    }
+
+    switch (event.type) {
+      case "checkout.session.completed": {
+        const s = event.data.object;
+        // Upsert user: set membership=active, store customer/subscription IDs
+        await grantAccess({
+          userId: s.metadata?.userId,
+          stripeCustomerId: s.customer,
+          subscriptionId: s.subscription,
+          status: "active",
+        });
+        break;
+      }
+      case "customer.subscription.updated": {
+        const sub = event.data.object;
+        await setStatus(sub.id, sub.status); // active, trialing, past_due, canceled
+        break;
+      }
+      case "customer.subscription.deleted": {
+        const sub = event.data.object;
+        await setStatus(sub.id, "canceled");
+        break;
+      }
+      case "invoice.payment_failed": {
+        const invoice = event.data.object;
+        await setStatus(invoice.subscription, "past_due");
+        break;
+      }
+      case "customer.subscription.trial_will_end": {
+        // Optional: send “trial ends in 3 days” email
+        break;
+      }
+    }
+    res.json({ received: true });
+  }
+);
+
+app.listen(3001, () => console.log("Billing server running on :3001"));
+
+// --- implement grantAccess / setStatus with your DB ---
+async function grantAccess({ userId, stripeCustomerId, subscriptionId, status }) {}
+async function setStatus(subscriptionId, status) {}
+STRIPE_SECRET_KEY=sk_live_...
+STRIPE_PRICE_ID=price_...
+STRIPE_WEBHOOK_SECRET=whsec_...
+CLIENT_URL=https://g8h3ilc18gve.manus.space
+<button id="startTrial">Start Free Trial</button>
+<script>
+document.getElementById('startTrial').onclick = async () => {
+  const r = await fetch('/api/billing/checkout', {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ email: currentUser.email, userId: currentUser.id })
+  });
+  const { url } = await r.json();
+  location.href = url;
+};
+</script>
+// requireActiveMembership.js
+export default function requireActiveMembership(req,res,next){
+  if (req.user?.membership === 'active' || req.user?.membership === 'trialing') return next();
+  return res.status(402).json({ error: "Membership required" });
+}
+npm i pdf-lib multer uuid
+// dmvWizard.js (router)
+import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
+import fs from "fs/promises";
+import path from "path";
+import multer from "multer";
+import { v4 as uuid } from "uuid";
+import express from "express";
+import requireActiveMembership from "./requireActiveMembership.js";
+
+const router = express.Router();
+const upload = multer({ dest: "/tmp" });
+
+router.post("/api/dmv/wizard/generate", requireActiveMembership, upload.single("idImage"), async (req,res) => {
+  const {
+    fullName, dob, dlNumber, address1, address2, city, state, zip,
+    phone, email, requestType, forWhom, purpose
+  } = req.body;
+
+  const outId = uuid();
+  const ir002Path = path.join(process.cwd(), "templates/ir002.pdf"); // Put the official DMV PDFs in /templates
+  const ir003Path = path.join(process.cwd(), "templates/ir003.pdf");
+
+  const ir002Bytes = await fs.readFile(ir002Path);
+  const ir003Bytes = await fs.readFile(ir003Path);
+  const [ir002Filled, ir003Filled] = await Promise.all([
+    fillSimple(ir002Bytes, { fullName, dob, dlNumber, address1, city, state, zip, phone, email, requestType, purpose }),
+    fillSimple(ir003Bytes, { fullName, address1, city, state, zip })
+  ]);
+
+  const outDir = path.join(process.cwd(), "generated", outId);
+  await fs.mkdir(outDir, { recursive: true });
+  await fs.writeFile(path.join(outDir, "IR-002.pdf"), ir002Filled);
+  await fs.writeFile(path.join(outDir, "IR-003_Affidavit.pdf"), ir003Filled);
+
+  // Optional: generate a one-page “Mailing Cover” with address + fees
+  const cover = await makeCover({
+    fullName, dlNumber,
+    addressBlock: `${fullName}\n${address1}${address2?'\n'+address2:''}\n${city}, ${state} ${zip}`,
+    fees: "$7 driver history (+$4 if certified)",
+    mailTo: "Central Services Records Division\n555 Wright Way\nCarson City, NV 89711-0250\n(775) 684-4590"
+  });
+  await fs.writeFile(path.join(outDir, "Mailing_Cover.pdf"), cover);
+
+  // Return secure, time-limited URLs in your real system
+  res.json({
+    id: outId,
+    files: [
+      `/download/${outId}/IR-002.pdf`,
+      `/download/${outId}/IR-003_Affidavit.pdf`,
+      `/download/${outId}/Mailing_Cover.pdf`
+    ],
+    nextSteps: [
+      "Get IR-003 notarized (e-notary acceptable).",
+      "Upload your driver’s license copy.",
+      "Submit via GovQA or mail with ADM-205 payment form.",
+    ]
+  });
+});
+
+async function fillSimple(pdfBytes, fields){
+  const pdfDoc = await PDFDocument.load(pdfBytes);
+  const page = pdfDoc.getPage(0);
+  const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  const draw = (text, x, y) => page.drawText(String(text||""), { x, y, size: 10, font, color: rgb(0,0,0) });
+
+  // NOTE: These are simple overlay positions; for true AcroForm field fill, map actual field names if present.
+  draw(fields.fullName, 90, 690);
+  draw(fields.dob, 420, 690);
+  draw(fields.dlNumber, 420, 670);
+  draw(`${fields.address1 || ""}`, 90, 670);
+  draw(`${fields.city || ""}, ${fields.state || ""} ${fields.zip || ""}`, 90, 650);
+  draw(fields.phone, 90, 630);
+  draw(fields.email, 300, 630);
+  // add more as needed…
+  return await pdfDoc.save();
+}
+
+async function makeCover({ fullName, dlNumber, addressBlock, fees, mailTo }) {
+  const pdfDoc = await PDFDocument.create();
+  const page = pdfDoc.addPage([595, 842]);
+  const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  const draw = (t,x,y,s=12)=>page.drawText(t,{x,y,size:s,font});
+  draw("Nevada DMV Records Request – Mail Cover", 50, 780, 16);
+  draw(`Customer: ${fullName} (DL: ${dlNumber||"n/a"})`, 50, 750);
+  draw("Return Address:", 50, 720); draw(addressBlock, 50, 700);
+  draw("Send To:", 330, 720); draw(mailTo, 330, 700);
+  draw("Include: IR-002, notarized IR-003, copy of DL, payment (ADM-205) or submit via GovQA.", 50, 640);
+  draw(`Fees: ${fees}`, 50, 620);
+  return await pdfDoc.save();
+}
+
+export default router;
+npm i express stripe body-parser cors
+// server.js
+import express from "express";
+import Stripe from "stripe";
+import bodyParser from "body-parser";
+import cors from "cors";
+
+const app = express();
+app.use(cors({ origin: process.env.CLIENT_URL, credentials: true }));
+app.use(express.json());
+
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, { apiVersion: "2024-06-20" });
+
+// Create a checkout session for the 7-day trial
+app.post("/api/billing/checkout", async (req, res) => {
+  const { email, userId } = req.body;
+  const session = await stripe.checkout.sessions.create({
+    mode: "subscription",
+    customer_email: email,
+    line_items: [{ price: process.env.STRIPE_PRICE_ID, quantity: 1 }],
+    success_url: `${process.env.CLIENT_URL}/billing/success?sid={CHECKOUT_SESSION_ID}`,
+    cancel_url: `${process.env.CLIENT_URL}/billing/cancel`,
+    metadata: { userId }
+  });
+  res.json({ url: session.url });
+});
+
+// Webhook: flips access on/off based on Stripe events
+app.post("/api/billing/webhook", bodyParser.raw({ type: "application/json" }), async (req, res) => {
+  const sig = req.headers["stripe-signature"];
+  let event;
+  try {
+    event = stripe.webhooks.constructEvent(req.body, sig, process.env.STRIPE_WEBHOOK_SECRET);
+  } catch (e) {
+    return res.status(400).send(`Webhook Error: ${e.message}`);
+  }
+  switch (event.type) {
+    case "checkout.session.completed": {
+      const s = event.data.object;
+      await grantAccess({ userId: s.metadata?.userId, subscriptionId: s.subscription, status: "active" });
+      break;
+    }
+    case "customer.subscription.updated": {
+      const sub = event.data.object;
+      await setStatus(sub.id, sub.status); // active|trialing|past_due|canceled
+      break;
+    }
+    case "customer.subscription.deleted":
+      await setStatus(event.data.object.id, "canceled");
+      break;
+    case "invoice.payment_failed":
+      await setStatus(event.data.object.subscription, "past_due");
+      break;
+  }
+  res.json({ received: true });
+});
+
+app.listen(process.env.PORT || 3001, () => console.log("Billing server up"));
+
+async function grantAccess({ userId, subscriptionId, status }) { /* update your DB */ }
+async function setStatus(subscriptionId, status) { /* update your DB */ }
+CLIENT_URL=https://g8h3ilc18gve.manus.space
+STRIPE_SECRET_KEY=sk_live_...           # from Stripe → DO NOT share
+STRIPE_PRICE_ID=price_...               # from your Product
+STRIPE_WEBHOOK_SECRET=whsec_...         # created in next step
+<script src="https://js.stripe.com/v3"></script>
+<script type="module">
+  import { loadStripe } from "https://cdn.skypack.dev/@stripe/stripe-js";
+  const stripe = await loadStripe("pk_live_51RQLlGL0NMx5pBE9mz8nbVWW2X9sXthYgPx11tkO3cLXcBjiXJRK30OuzYMweC3hP88NXyXrhxMRkyy7A0l82Y0N00VUpSxsgI");
+
+  document.querySelector("#startTrial").addEventListener("click", async () => {
+    const r = await fetch("https://<YOUR-RAILWAY-APP>.up.railway.app/api/billing/checkout", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: window.currentUser.email, userId: window.currentUser.id })
+    });
+    const { url } = await r.json();
+    window.location = url;
+  });
+</script>
+<button id="startTrial">Start Free Trial</button>
+npm i pdf-lib multer uuid
+// dmv.js
+import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
+import fs from "fs/promises";
+import path from "path";
+import express from "express";
+import multer from "multer";
+const router = express.Router();
+const upload = multer({ dest: "/tmp" });
+
+function requireMember(req,res,next){
+  // gate behind paid or trial membership (use your auth)
+  return next();
+}
+
+router.post("/api/dmv/generate", requireMember, upload.single("idImage"), async (req,res) => {
+  const { fullName, dob, dlNumber, address1, address2, city, state, zip, phone, email, purpose="Own record" } = req.body;
+
+  const ir002 = await fs.readFile(path.join(process.cwd(), "templates/ir002.pdf")); // official form PDF
+  const ir003 = await fs.readFile(path.join(process.cwd(), "templates/ir003.pdf")); // official affidavit PDF
+
+  const filled002 = await overlay(ir002, ({draw}) => {
+    draw(fullName, 95, 690); draw(dob, 420, 690); draw(dlNumber, 420, 670);
+    draw(address1, 95, 670); draw(`${city}, ${state} ${zip}`, 95, 650);
+    draw(phone, 95, 630); draw(email, 300, 630); draw(purpose, 95, 610);
+  });
+
+  const filled003 = await overlay(ir003, ({draw}) => {
+    draw(fullName, 120, 705); draw(address1, 120, 685); draw(`${city}, ${state} ${zip}`, 120, 665);
+    // user must notarize this one
+  });
+
+  await fs.mkdir("generated", { recursive: true });
+  await fs.writeFile("generated/IR-002.pdf", filled002);
+  await fs.writeFile("generated/IR-003_Affidavit.pdf", filled003);
+
+  res.json({
+    files: ["/download/IR-002.pdf", "/download/IR-003_Affidavit.pdf"],
+    nextSteps: [
+      "Get IR-003 notarized (e-notary acceptable).",
+      "Upload your driver’s license image.",
+      "Submit via Nevada DMV GovQA or mail to Carson City with payment ($7, +$4 certified)."
+    ]
+  });
+});
+
+async function overlay(bytes, fn){
+  const pdf = await PDFDocument.load(bytes);
+  const page = pdf.getPage(0);
+  const font = await pdf.embedFont(StandardFonts.Helvetica);
+  const draw = (t,x,y)=>page.drawText(String(t||""), { x, y, size: 10, font, color: rgb(0,0,0) });
+  fn({draw});
+  return await pdf.save();
+}
+export default router;
+<form id="dmvForm">
+  <input name="fullName" placeholder="Full legal name" required />
+  <input name="dob" placeholder="DOB (MM/DD/YYYY)" required />
+  <input name="dlNumber" placeholder="NV Driver License #" required />
+  <input name="address1" placeholder="Address line 1" required />
+  <input name="address2" placeholder="Address line 2" />
+  <input name="city" placeholder="City" required />
+  <input name="state" value="NV" required />
+  <input name="zip" placeholder="ZIP" required />
+  <input name="phone" placeholder="Phone" required />
+  <input name="email" placeholder="Email" required />
+  <button type="submit">Generate DMV Packet</button>
+</form>
+<div id="dmvLinks"></div>
+
+<script>
+document.getElementById('dmvForm').onsubmit = async (e) => {
+  e.preventDefault();
+  const body = Object.fromEntries(new FormData(e.target).entries());
+  const r = await fetch("https://<YOUR-RAILWAY-APP>.up.railway.app/api/dmv/generate", {
+    method:"POST", headers:{ "Content-Type":"application/json" }, body: JSON.stringify(body)
+  });
+  const data = await r.json();
+  document.getElementById('dmvLinks').innerHTML = data.files.map(f=>`<a href="${f}" target="_blank">${f.split('/').pop()}</a>`).join("<br>");
+};
+</script>
+// src/types.ts
+export type SubmissionChannel = "portal" | "mail" | "email" | "api" | "in_person";
+
+export type RequiredDoc =
+  | "gov_id_front"
+  | "gov_id_back"
+  | "notarized_affidavit"
+  | "authorization_letter"
+  | "proof_of_address"
+  | "payment_form"
+  | "other";
+
+export interface DMVFormMapping {
+  code: string;               // e.g., "IR-002" or "INF-1125"
+  title: string;              // Human label
+  templateFile: string;       // path in /templates/[state]/[form].pdf
+  fillStrategy: "acroform" | "overlay";
+  // map logical fields → PDF field names or overlay coordinates
+  fieldMap?: Record<string, string>;
+  overlayMap?: Record<string, { x: number; y: number; page?: number; size?: number }>;
+}
+
+export interface DMVStateAdapter {
+  state: string;                         // "NV", "CA", "NY", ...
+  displayName: string;                   // "Nevada"
+  supports: ("driver_history" | "vehicle_record" | "title_history")[];
+  requiresNotary: boolean;
+  requiresAuthorizationWhenRequestingForAnother: boolean;
+  requiredDocs: RequiredDoc[];
+  fees: { base: number; certifiedAddOn?: number; rushAddOn?: number; currency?: "USD" };
+  submission: {
+    channel: SubmissionChannel;
+    address?: string;                    // for mail
+    portalUrl?: string;                  // for portal handoff
+    apiSpec?: { baseUrl: string; auth: "apikey" | "oauth2" | "none" };
+    email?: string;
+    notes?: string[];
+  };
+  forms: DMVFormMapping[];
+  // Wizard schema (what to ask the user)
+  schema: {
+    driver_history: JSONSchema7;         // use JSON Schema per request type
+    vehicle_record?: JSONSchema7;
+    title_history?: JSONSchema7;
+  };
+}
+// src/states/NV.ts
+import { DMVStateAdapter } from "../types.js";
+
+export const NV: DMVStateAdapter = {
+  state: "NV",
+  displayName: "Nevada",
+  supports: ["driver_history", "vehicle_record"],
+  requiresNotary: true, // affidavit must be notarized
+  requiresAuthorizationWhenRequestingForAnother: true,
+  requiredDocs: ["gov_id_front", "notarized_affidavit"],
+  fees: { base: 7, certifiedAddOn: 4, currency: "USD" },
+  submission: {
+    channel: "mail",
+    address:
+      "Central Services Records Division\n555 Wright Way\nCarson City, NV 89711-0250",
+    portalUrl: "https://nevada-dmv.govqa.us/WEBAPP/_rs/SupportHome.aspx",
+    notes: [
+      "Include driver’s license copy.",
+      "Affidavit must be notarized (e-notary OK in most cases).",
+    ],
+  },
+  forms: [
+    {
+      code: "IR-002",
+      title: "Individual Records Request",
+      templateFile: "templates/NV/IR-002.pdf",
+      fillStrategy: "overlay",
+      overlayMap: {
+        fullName: { x: 95, y: 690 },
+        dob: { x: 420, y: 690 },
+        dlNumber: { x: 420, y: 670 },
+        address1: { x: 95, y: 670 },
+        cityStateZip: { x: 95, y: 650 },
+        phone: { x: 95, y: 630 },
+        email: { x: 300, y: 630 },
+        purpose: { x: 95, y: 610 },
+      },
+    },
+    {
+      code: "IR-003",
+      title: "Affidavit",
+      templateFile: "templates/NV/IR-003.pdf",
+      fillStrategy: "overlay",
+      overlayMap: {
+        fullName: { x: 120, y: 705 },
+        address1: { x: 120, y: 685 },
+        cityStateZip: { x: 120, y: 665 },
+      },
+    },
+  ],
+  schema: {
+    driver_history: {
+      type: "object",
+      required: ["fullName", "dob", "dlNumber", "address1", "city", "state", "zip", "phone", "email"],
+      properties: {
+        fullName: { type: "string", title: "Full legal name" },
+        dob: { type: "string", title: "Date of birth (MM/DD/YYYY)" },
+        dlNumber: { type: "string", title: "Driver License number" },
+        address1: { type: "string", title: "Address line 1" },
+        address2: { type: "string", title: "Address line 2" },
+        city: { type: "string", title: "City" },
+        state: { type: "string", title: "State", default: "NV" },
+        zip: { type: "string", title: "ZIP" },
+        phone: { type: "string", title: "Phone" },
+        email: { type: "string", title: "Email" },
+        purpose: { type: "string", title: "Purpose", default: "Own record" },
+      },
+    },
+  },
+};
+// src/states/TEMPLATE.ts - use this to add any new state in minutes
+import { DMVStateAdapter } from "../types.js";
+
+export const TEMPLATE_STATE: DMVStateAdapter = {
+  state: "XX",
+  displayName: "Example State",
+  supports: ["driver_history"],
+  requiresNotary: false,
+  requiresAuthorizationWhenRequestingForAnother: true,
+  requiredDocs: ["gov_id_front"],
+  fees: { base: 10, certifiedAddOn: 5, currency: "USD" },
+  submission: {
+    channel: "portal",                         // or "mail"
+    portalUrl: "https://example.gov/records",
+    notes: ["Portal requires user login", "Allow 5–7 business days"],
+  },
+  forms: [
+    {
+      code: "FORM-1",
+      title: "Driver Record Request",
+      templateFile: "templates/XX/FORM-1.pdf",
+      fillStrategy: "acroform",
+      fieldMap: {
+        // PDF field names as they appear in the AcroForm
+        "Applicant.Name": "fullName",
+        "Applicant.DOB": "dob",
+        "Applicant.License": "dlNumber",
+      },
+    },
+  ],
+  schema: {
+    driver_history: {
+      type: "object",
+      required: ["fullName", "dob", "dlNumber"],
+      properties: {
+        fullName: { type: "string", title: "Full legal name" },
+        dob: { type: "string", title: "DOB (MM/DD/YYYY)" },
+        dlNumber: { type: "string", title: "Driver License number" },
+      },
+    },
+  },
+};
+// src/states/index.ts
+import { NV } from "./NV.js";
+import { TEMPLATE_STATE } from "./TEMPLATE.js";
+
+export const DMV_REGISTRY = new Map([
+  [NV.state, NV],
+  [TEMPLATE_STATE.state, TEMPLATE_STATE],
+]);
+
+export type DMVStateCode = typeof NV.state | typeof TEMPLATE_STATE.state;
+// src/routes/dmv.ts
+import express from "express";
+import { DMV_REGISTRY } from "../states/index.js";
+import { buildPacket } from "../utils/packet.js";
+import requireActiveMembership from "../auth/requireActiveMembership.js";
+
+const router = express.Router();
+
+// 1) Get schema to render the form for a given state and request type
+router.get("/api/dmv/schema/:state/:type", requireActiveMembership, (req, res) => {
+  const { state, type } = req.params;
+  const adapter = DMV_REGISTRY.get(state.toUpperCase());
+  if (!adapter || !adapter.schema[type]) return res.status(404).json({ error: "Unsupported state/type" });
+  res.json(adapter.schema[type]);
+});
+
+// 2) Generate the packet (PDFs + instructions) for a given state
+router.post("/api/dmv/generate/:state/:type", requireActiveMembership, async (req, res) => {
+  const { state, type } = req.params;
+  const adapter = DMV_REGISTRY.get(state.toUpperCase());
+  if (!adapter) return res.status(404).json({ error: "Unsupported state" });
+
+  // Validate input against the state schema (use ajv)
+  // ... ajv validation here ...
+
+  const result = await buildPacket(adapter, type as any, req.body); // returns file paths + next steps
+  res.json(result);
+});
+
+export default router;
+// src/utils/packet.ts
+import { DMVStateAdapter, DMVFormMapping } from "../types.js";
+import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
+import fs from "fs/promises";
+import path from "path";
+import { v4 as uuid } from "uuid";
+
+export async function buildPacket(adapter: DMVStateAdapter, requestType: "driver_history" | "vehicle_record" | "title_history", data: any) {
+  const outId = uuid();
+  const outDir = path.join(process.cwd(), "generated", adapter.state, outId);
+  await fs.mkdir(outDir, { recursive: true });
+
+  for (const form of adapter.forms) {
+    const bytes = await fs.readFile(path.join(process.cwd(), form.templateFile));
+    const filled = form.fillStrategy === "acroform"
+      ? await fillAcroForm(bytes, form, data)
+      : await fillOverlay(bytes, form, data);
+    await fs.writeFile(path.join(outDir, `${form.code}.pdf`), filled);
+  }
+
+  // Build a universal cover sheet with fees and instructions
+  const cover = await makeCover({
+    state: adapter.displayName,
+    address: adapter.submission.address,
+    portalUrl: adapter.submission.portalUrl,
+    fees: adapter.fees,
+    requiredDocs: adapter.requiredDocs,
+    notes: adapter.submission.notes || [],
+  });
+  await fs.writeFile(path.join(outDir, "Cover_Instructions.pdf"), cover);
+
+  return {
+    packetId: outId,
+    files: [
+      ...adapter.forms.map(f => `/download/${adapter.state}/${outId}/${f.code}.pdf`),
+      `/download/${adapter.state}/${outId}/Cover_Instructions.pdf`,
+    ],
+    nextSteps: buildNextSteps(adapter),
+  };
+}
+
+async function fillAcroForm(bytes: Uint8Array, form: DMVFormMapping, data: any) {
+  const pdf = await PDFDocument.load(bytes);
+  const formApi = pdf.getForm();
+  for (const [pdfField, logical] of Object.entries(form.fieldMap || {})) {
+    const v = valueFor(data, logical);
+    try { formApi.getTextField(pdfField).setText(v ?? ""); } catch {}
+  }
+  return pdf.save();
+}
+
+async function fillOverlay(bytes: Uint8Array, form: DMVFormMapping, data: any) {
+  const pdf = await PDFDocument.load(bytes);
+  const font = await pdf.embedFont(StandardFonts.Helvetica);
+  for (const [logical, pos] of Object.entries(form.overlayMap || {})) {
+    const page = pdf.getPage(pos.page ?? 0);
+    const val = valueFor(data, logical) ?? "";
+    page.drawText(val, { x: pos.x, y: pos.y, size: pos.size ?? 10, font, color: rgb(0, 0, 0) });
+  }
+  return pdf.save();
+}
+
+function valueFor(data: any, key: string) {
+  if (key === "cityStateZip") return `${data.city}, ${data.state} ${data.zip}`;
+  return data[key];
+}
+
+async function makeCover({ state, address, portalUrl, fees, requiredDocs, notes }:{
+  state:string; address?:string; portalUrl?:string; fees:any; requiredDocs:string[]; notes:string[];
+}) {
+  const pdf = await PDFDocument.create();
+  const page = pdf.addPage([595, 842]);
+  const font = await pdf.embedFont(StandardFonts.Helvetica);
+  const draw = (t:string,x:number,y:number,s=12)=>page.drawText(t,{x,y,size:s,font});
+  let y = 790;
+  draw(`State: ${state} — DMV Records Packet`, 40, y, 16); y -= 30;
+  if (address) { draw("Mail to:", 40, y); y -= 16; draw(address, 40, y); y -= 40; }
+  if (portalUrl) { draw(`Portal: ${portalUrl}`, 40, y); y -= 20; }
+  draw(`Fees: $${fees.base}${fees.certifiedAddOn ? ` (+$${fees.certifiedAddOn} certified)` : ""}`, 40, y); y -= 20;
+  draw(`Required attachments: ${requiredDocs.join(", ")}`, 40, y); y -= 20;
+  notes.forEach(n => { draw(`• ${n}`, 40, y); y -= 16; });
+  draw("We are a private assistance service, not a government agency.", 40, y - 8, 10);
+  return pdf.save();
+}
+
+function buildNextSteps(adapter: DMVStateAdapter) {
+  const steps = [];
+  if (adapter.requiresNotary) steps.push("Get the affidavit notarized (e-notary accepted where allowed).");
+  steps.push("Attach a clear image of your government ID.");
+  if (adapter.submission.channel === "mail") steps.push("Print, sign, and mail the packet with required fees.");
+  if (adapter.submission.channel === "portal") steps.push("Follow the portal link and upload the generated forms.");
+  steps.push("Track status from your dashboard.");
+  return steps;
+}
+// load schema and render
+const schema = await fetch(`/api/dmv/schema/${state}/${type}`).then(r=>r.json());
+renderJsonSchemaForm(schema, onSubmit);
+
+async function onSubmit(values){
+  const r = await fetch(`/api/dmv/generate/${state}/${type}`, {
+    method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify(values)
+  });
+  const { files, nextSteps } = await r.json();
+  showDownloads(files); showChecklist(nextSteps);
+}
+npm install
+cp .env.example .env
+npm start
+# visit http://localhost:3001
+https://<your-server>/api/billing/webhook
+https://<your-app>.up.railway.app
+https://<your-app>.up.railway.app/api/billing/checkout
+// In src/routes/billing.js inside webhook switch:
+case "customer.subscription.created":
+case "customer.subscription.updated": {
+  const sub = event.data.object;
+  const customer = await stripe.customers.retrieve(sub.customer);
+  const email = customer.email;
+  // look up your user by email, then set membership status = sub.status
+  break;
+}
+# in the repo folder
+cp .env.example .env
+# put your TEST keys in .env (sk_test..., price in test, webhook secret will come next)
+npm install
+npm start
+# install stripe cli if needed, then:
+stripe login
+stripe listen --events checkout.session.completed,customer.subscription.updated,customer.subscription.deleted,invoice.payment_failed \
+  --forward-to http://localhost:3001/api/billing/webhook
+# copy the signing secret it prints → paste into .env as STRIPE_WEBHOOK_SECRET
+curl -X POST http://localhost:3001/api/billing/checkout \
+  -H "Content-Type: application/json" \
+  -d '{"email":"test+1@example.com","userId":"u_123"}'
+curl -H "X-Membership: trialing" http://localhost:3001/api/dmv/schema/NV/driver_history
+curl -X POST http://localhost:3001/api/dmv/generate/NV/driver_history \
+  -H "Content-Type: application/json" -H "X-Membership: trialing" \
+  -d '{"fullName":"Test User","dob":"01/02/1990","dlNumber":"N1234567",
+       "address1":"123 Main St","city":"Las Vegas","state":"NV","zip":"89101",
+       "phone":"7025550000","email":"test@example.com"}'
+CLIENT_URL=https://g8h3ilc18gve.manus.space
+STRIPE_SECRET_KEY=sk_test_...
+STRIPE_PRICE_ID=price_test_...   # test price with 7-day trial
+STRIPE_WEBHOOK_SECRET=whsec_...  # from Stripe webhook you create below
+PORT=3001
+POST https://<your-app>.up.railway.app/api/billing/checkout
+// also handle when sub is created outside Checkout:
+case "customer.subscription.created": {
+  const sub = event.data.object;
+  const customer = await stripe.customers.retrieve(sub.customer);
+  const email = customer.email;
+  // find your user by email => set membership = sub.status
+}
