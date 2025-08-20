@@ -1,0 +1,116 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Document Portal Demo</title>
+  <script src="https://js.stripe.com/v3"></script>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 20px; }
+    .card { border: 1px solid #ddd; border-radius: 12px; padding: 16px; margin: 12px 0; }
+    label { display:block; margin-top:8px; }
+    input, select { padding:8px; width: 320px; max-width: 90%; }
+    button { padding:10px 16px; border-radius:8px; border:0; background:#111; color:#fff; cursor:pointer; }
+    .row { display:flex; gap:16px; flex-wrap:wrap; }
+  </style>
+</head>
+<body>
+  <h1>State Document Portal</h1>
+  <p>This is a demo front-end you can copy into your Manus site.</p>
+
+  <div class="card">
+    <h2>Start Free Trial (Stripe)</h2>
+    <label>Email <input id="email" placeholder="you@domain.com"></label>
+    <label>User ID <input id="uid" placeholder="12345"></label>
+    <button id="startTrial">Start 7‑Day Free Trial → $19.99/mo</button>
+  </div>
+
+  <div class="card">
+    <h2>DMV Records Wizard (50-state)</h2>
+    <div class="row">
+      <label>State
+        <select id="state">
+          <option value="NV">Nevada</option>
+          <option value="XX">Example State</option>
+        </select>
+      </label>
+      <label>Type
+        <select id="rtype">
+          <option value="driver_history">Driver History</option>
+        </select>
+      </label>
+    </div>
+    <div id="form"></div>
+    <div id="results"></div>
+  </div>
+
+<script type="module">
+  import { loadStripe } from "https://cdn.skypack.dev/@stripe/stripe-js";
+  const stripe = await loadStripe("pk_live_51RQLlGL0NMx5pBE9mz8nbVWW2X9sXthYgPx11tkO3cLXcBjiXJRK30OuzYMweC3hP88NXyXrhxMRkyy7A0l82Y0N00VUpSxsgI");
+
+  const API = location.origin; // same origin when running locally
+  document.getElementById("startTrial").onclick = async () => {
+    const email = document.getElementById("email").value;
+    const userId = document.getElementById("uid").value || "demo-user";
+    const r = await fetch(API + "/api/billing/checkout", {
+      method:"POST",
+      headers:{ "Content-Type":"application/json" },
+      body: JSON.stringify({ email, userId })
+    });
+    const { url } = await r.json();
+    location.href = url;
+  };
+
+  // Simple JSON-schema form renderer (very basic)
+  async function loadSchema() {
+    const state = document.getElementById("state").value;
+    const type = document.getElementById("rtype").value;
+    const r = await fetch(API + `/api/dmv/schema/${state}/${type}`, {
+      headers: { "X-Membership": "trialing" } // demo gate
+    });
+    const schema = await r.json();
+    renderForm(schema, state, type);
+  }
+
+  function renderForm(schema, state, type) {
+    const f = document.getElementById("form");
+    f.innerHTML = "";
+    const form = document.createElement("form");
+    form.id = "jsonForm";
+    Object.entries(schema.properties).forEach(([name, def]) => {
+      const label = document.createElement("label");
+      label.textContent = def.title || name;
+      const input = document.createElement("input");
+      input.name = name;
+      input.placeholder = def.title || name;
+      if (def.default) input.value = def.default;
+      label.appendChild(input);
+      form.appendChild(label);
+    });
+    const btn = document.createElement("button");
+    btn.type = "submit";
+    btn.textContent = "Generate Packet";
+    form.appendChild(btn);
+    f.appendChild(form);
+
+    form.onsubmit = async (e) => {
+      e.preventDefault();
+      const data = Object.fromEntries(new FormData(form).entries());
+      const r = await fetch(API + `/api/dmv/generate/${state}/${type}`, {
+        method:"POST",
+        headers:{ "Content-Type":"application/json", "X-Membership":"trialing" },
+        body: JSON.stringify(data)
+      });
+      const out = await r.json();
+      const results = document.getElementById("results");
+      results.innerHTML = "<h3>Downloads</h3>" + out.files.map(u=>`<div><a target="_blank" href="${u}">${u.split("/").pop()}</a></div>`).join("") +
+                          "<h3>Next steps</h3><ol>" + out.nextSteps.map(s=>`<li>${s}</li>`).join("") + "</ol>";
+    };
+  }
+
+  loadSchema();
+  document.getElementById("state").onchange = loadSchema;
+  document.getElementById("rtype").onchange = loadSchema;
+</script>
+</body>
+</html>
