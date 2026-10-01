@@ -90,6 +90,9 @@
     button:disabled { opacity: 0.6; cursor: wait; }
     .ghost { background: transparent; color: var(--pine); border: 1px solid var(--pine); }
     .hint { margin: 4px 0 0; color: var(--muted); font-size: 0.92rem; font-weight: 400; }
+    .fees { list-style: none; padding: 0; margin: 8px 0 0; }
+    .fees li { display: grid; grid-template-columns: 1fr auto; gap: 4px 16px; padding: 8px 0; border-top: 1px solid var(--line); }
+    .fees em { grid-column: 1 / -1; font-style: normal; color: var(--muted); font-size: 0.9rem; }
     .note, .error, .ok {
       margin-top: 12px;
       padding: 10px 12px;
@@ -130,6 +133,7 @@
         <label for="record">Record</label>
         <select id="record"></select>
         <p id="record-note" class="hint"></p>
+        <div id="fees"></div>
         <form id="packet-form"></form>
         <div id="status"></div>
         <div id="results"></div>
@@ -157,6 +161,7 @@
   <script type="module">
     const recordSelect = document.querySelector("#record");
     const recordNote = document.querySelector("#record-note");
+    const feesEl = document.querySelector("#fees");
     const form = document.querySelector("#packet-form");
     const statusEl = document.querySelector("#status");
     const resultsEl = document.querySelector("#results");
@@ -210,10 +215,66 @@
       const data = await response.json();
       if (!response.ok) {
         form.innerHTML = "";
+        feesEl.replaceChildren();
         message(statusEl, "error", data.error || "Could not load this request.");
         return;
       }
+      renderFees(data.pricing);
       renderForm(data.schema);
+    }
+
+    function money(amount) {
+      if (amount == null) return "Set by the office";
+      if (Number.isInteger(amount)) return `$${amount}`;
+      return `$${Number(amount).toFixed(2)}`;
+    }
+
+    function renderFees(pricing) {
+      feesEl.replaceChildren();
+      if (!pricing) return;
+      const heading = document.createElement("h3");
+      heading.textContent = pricing.online ? "Fees for online access" : "Fees";
+      feesEl.append(heading);
+      if (pricing.access) {
+        const access = document.createElement("p");
+        access.textContent = pricing.access;
+        feesEl.append(access);
+      }
+      const list = document.createElement("ul");
+      list.className = "fees";
+      for (const line of pricing.lines || []) {
+        const item = document.createElement("li");
+        const name = document.createElement("span");
+        name.textContent = line.group ? `${line.group}: ${line.label}` : line.label;
+        const price = document.createElement("strong");
+        price.textContent = line.amount == null ? "Set by the office" : `${money(line.amount)}${line.unit ? ` ${line.unit}` : ""}`;
+        item.append(name, price);
+        if (line.note) {
+          const note = document.createElement("em");
+          note.textContent = line.note;
+          item.append(note);
+        }
+        list.append(item);
+      }
+      feesEl.append(list);
+      const membership = document.createElement("p");
+      membership.className = "hint";
+      membership.textContent = "This site is $0 for 7 days, then $19.99 per month. That charge is separate from the office fees above.";
+      feesEl.append(membership);
+      if (pricing.url) {
+        const link = document.createElement("a");
+        link.href = pricing.url;
+        link.target = "_blank";
+        link.rel = "noopener";
+        link.textContent = "Open the official site";
+        feesEl.append(link);
+      }
+      if (pricing.sourceLabel) {
+        const source = document.createElement("p");
+        source.className = "hint";
+        source.textContent = `Fee source: ${pricing.sourceLabel}${pricing.asOf ? `, checked ${pricing.asOf}` : ""}.`;
+        feesEl.append(source);
+      }
     }
 
     function renderForm(schema) {

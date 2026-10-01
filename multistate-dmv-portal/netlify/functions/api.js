@@ -1,5 +1,6 @@
 import { generatePacket, getSchema, listStates } from "../../src/services/dmv.js";
 import { generateRecord, getRecordSchema, listCatalog } from "../../src/services/records.js";
+import { feesFor, getService, listServices, MEMBERSHIP } from "../../src/fees/schedule.js";
 import { billingStatus, createCheckout, receiveWebhook } from "../../src/services/billing.js";
 import { envValue } from "../../src/services/env.js";
 
@@ -24,6 +25,28 @@ export default async (req) => {
   const membershipRequired = envValue("ENFORCE_MEMBERSHIP") === "true";
   const membership = req.headers.get("x-membership");
   const memberDenied = membershipRequired && membership !== "active" && membership !== "trialing";
+
+  if (req.method === "GET" && pathname === "/api/services") {
+    return json(200, { membership: MEMBERSHIP, services: listServices() });
+  }
+
+  const serviceMatch = pathname.match(/^\/api\/services\/([^/]+)$/);
+  if (req.method === "GET" && serviceMatch) {
+    const service = getService(decodeURIComponent(serviceMatch[1]));
+    if (!service) return json(404, { error: "Unknown service" });
+    return json(200, service);
+  }
+
+  if (req.method === "GET" && pathname === "/api/fees") {
+    const record = url.searchParams.get("record");
+    if (!record) return json(200, { membership: MEMBERSHIP, services: listServices() });
+    return json(200, feesFor(record));
+  }
+
+  const feeMatch = pathname.match(/^\/api\/fees\/([^/]+)$/);
+  if (req.method === "GET" && feeMatch) {
+    return json(200, feesFor(decodeURIComponent(feeMatch[1])));
+  }
 
   if (req.method === "GET" && pathname === "/api/records") {
     if (memberDenied) return json(402, { error: "Membership required" });
@@ -112,6 +135,10 @@ export const config = {
   path: [
     "/health",
     "/api/health",
+    "/api/services",
+    "/api/services/:id",
+    "/api/fees",
+    "/api/fees/:recordId",
     "/api/records",
     "/api/records/schema/:id",
     "/api/records/generate/:id",

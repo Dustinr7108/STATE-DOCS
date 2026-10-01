@@ -2,6 +2,7 @@ import Ajv from "ajv";
 import addFormats from "ajv-formats";
 import { DMV_REGISTRY } from "../states/index.js";
 import { buildPacket } from "../utils/packet.js";
+import { feesFor } from "../fees/schedule.js";
 
 const ajv = new Ajv({ allErrors: true, strict: false });
 addFormats(ajv);
@@ -34,6 +35,7 @@ export function getSchema(state, type) {
       displayName: adapter.displayName,
       type,
       fees: adapter.fees,
+      pricing: feesFor(`dmv:${adapter.state}:${type}`),
       requiresNotary: adapter.requiresNotary,
       submission: adapter.submission,
       schema,
@@ -56,8 +58,9 @@ export async function generatePacket(state, type, data) {
   }
 
   try {
-    const packet = await buildPacket(adapter, type, payload);
-    return { status: 200, body: packet };
+    const pricing = feesFor(`dmv:${adapter.state}:${type}`);
+    const packet = await buildPacket({ ...adapter, fees: pricing }, type, payload);
+    return { status: 200, body: { ...packet, pricing } };
   } catch (error) {
     console.error(error);
     return { status: 500, body: { error: "Failed to build packet", detail: error.message } };

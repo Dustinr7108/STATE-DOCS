@@ -6,6 +6,7 @@ import dotenv from "dotenv";
 import billingRouter from "./src/routes/billing.js";
 import dmvRouter from "./src/routes/dmv.js";
 import recordsRouter from "./src/routes/records.js";
+import servicesRouter from "./src/routes/services.js";
 
 dotenv.config();
 
@@ -27,6 +28,7 @@ app.get("/billing/cancel", (req, res) => {
 app.use(billingRouter);
 app.use(dmvRouter);
 app.use(recordsRouter);
+app.use(servicesRouter);
 
 app.use((req, res) => res.status(404).json({ error: "Not found" }));
 

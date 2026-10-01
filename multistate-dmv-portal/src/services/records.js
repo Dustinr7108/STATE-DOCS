@@ -3,6 +3,7 @@ import addFormats from "ajv-formats";
 import { RECORD_REGISTRY } from "../records/catalog.js";
 import { DMV_REGISTRY } from "../states/index.js";
 import { buildPacket } from "../utils/packet.js";
+import { feesFor } from "../fees/schedule.js";
 
 const ajv = new Ajv({ allErrors: true, strict: false });
 addFormats(ajv);
@@ -47,6 +48,7 @@ export function getRecordSchema(id) {
       summary: record.summary,
       limit: record.limit,
       fees: record.fees,
+      pricing: feesFor(record.id),
       submission: record.submission,
       schema: record.schema,
     },
@@ -65,8 +67,9 @@ export async function generateRecord(id, data) {
   }
 
   try {
-    const packet = await buildPacket(record, record.id, payload);
-    return { status: 200, body: packet };
+    const pricing = feesFor(record.id);
+    const packet = await buildPacket({ ...record, fees: pricing }, record.id, payload);
+    return { status: 200, body: { ...packet, pricing } };
   } catch (error) {
     console.error(error);
     return { status: 500, body: { error: "Failed to build packet", detail: error.message } };

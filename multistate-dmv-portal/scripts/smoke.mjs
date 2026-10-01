@@ -1,5 +1,6 @@
 import { generatePacket, listStates } from "../src/services/dmv.js";
 import { generateRecord, listCatalog } from "../src/services/records.js";
+import { feesFor, listServices } from "../src/fees/schedule.js";
 import { billingStatus, createCheckout } from "../src/services/billing.js";
 
 const states = listStates();
@@ -74,6 +75,20 @@ const catalog = listCatalog();
 for (const id of ["all", "marriage", "divorce", "death", "property", "bank", "criminal_history", "court_record"]) {
   if (!catalog.some((item) => item.id === id)) throw new Error(`missing ${id}`);
 }
+
+const services = listServices();
+if (!services.some((service) => service.online && service.id === "pacer")) throw new Error("PACER service missing");
+const history = feesFor("criminal_history");
+if (!history.lines.some((line) => line.amount === 18)) throw new Error("FBI $18 fee missing");
+const driver = feesFor("dmv:NV:driver_history");
+if (!driver.lines.some((line) => line.amount === 7) || !driver.lines.some((line) => line.amount === 1.5)) {
+  throw new Error("Nevada driver fees missing");
+}
+const checklist = feesFor("all");
+if (!checklist.lines.some((line) => line.amount === 25) || checklist.membership.lines[1].amount !== 19.99) {
+  throw new Error("checklist fees missing");
+}
+if (!marriage.body.pricing?.lines?.length) throw new Error("marriage packet did not include pricing");
 
 const status = billingStatus();
 if (status.body.configured) throw new Error("billing should be unconfigured in the smoke test");

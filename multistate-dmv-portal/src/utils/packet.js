@@ -2,6 +2,7 @@ import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import { v4 as uuid } from "uuid";
 import { drawBlock, plainText } from "./pdfText.js";
 import { readTemplate } from "./templates.js";
+import { formatMoney } from "../fees/schedule.js";
 
 const FIELD_LABELS = {
   fullName: "Full legal name",
@@ -154,10 +155,22 @@ async function makeCover({ state, requestType, address, portalUrl, fees, require
   }
 
   heading("Fees to confirm", 13);
-  const feeLine = fees?.base == null
-    ? (fees?.note || "The office sets the fee. Confirm the current amount before you pay.")
-    : `Listed base fee: $${fees.base}${fees.certifiedAddOn ? `. Certified copy add-on: $${fees.certifiedAddOn}` : ""}. ${fees.currency || "USD"}. Agencies change fees; check the current amount before you pay.`;
-  body(feeLine);
+  if (Array.isArray(fees?.lines) && fees.lines.length) {
+    for (const line of fees.lines) {
+      const price = formatMoney(line.amount) || "Set by the office";
+      const unit = line.unit ? ` ${line.unit}` : "";
+      const note = line.note ? ` — ${line.note}` : "";
+      const group = line.group ? `${line.group}: ` : "";
+      body(`${group}${line.label}: ${price}${unit}${note}`);
+    }
+    if (fees.source) body(`Source: ${fees.source}`);
+  } else {
+    const feeLine = fees?.base == null
+      ? (fees?.note || "The office sets the fee. Confirm the current amount before you pay.")
+      : `Listed base fee: $${fees.base}${fees.certifiedAddOn ? `. Certified copy add-on: $${fees.certifiedAddOn}` : ""}. ${fees.currency || "USD"}. Agencies change fees; check the current amount before you pay.`;
+    body(feeLine);
+  }
+  body("Portal membership is $0 for 7 days, then $19.99 per month. That charge is separate from the office fees.");
 
   heading("Attachments", 13);
   body(requiredDocs.map((doc) => doc.replaceAll("_", " ")).join(", ") || "None listed");
