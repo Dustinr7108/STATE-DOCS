@@ -1,6 +1,6 @@
 export const TEMPLATE_STATE = {
   state: "XX",
-  displayName: "Example State",
+  displayName: "Example template",
   supports: ["driver_history"],
   requiresNotary: false,
   requiresAuthorizationWhenRequestingForAnother: true,

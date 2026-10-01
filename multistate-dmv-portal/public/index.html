@@ -1,116 +1,437 @@
 <!doctype html>
-<html>
+<html lang="en">
 <head>
-  <meta charset="utf-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1"/>
-  <title>Document Portal Demo</title>
-  <script src="https://js.stripe.com/v3"></script>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>State Document Portal</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,560;9..144,650&family=Source+Sans+3:ital,wght@0,400;0,600;0,700;1,400&display=swap" rel="stylesheet">
   <style>
-    body { font-family: system-ui, sans-serif; margin: 20px; }
-    .card { border: 1px solid #ddd; border-radius: 12px; padding: 16px; margin: 12px 0; }
-    label { display:block; margin-top:8px; }
-    input, select { padding:8px; width: 320px; max-width: 90%; }
-    button { padding:10px 16px; border-radius:8px; border:0; background:#111; color:#fff; cursor:pointer; }
-    .row { display:flex; gap:16px; flex-wrap:wrap; }
+    :root {
+      --ink: #1c1915;
+      --muted: #5e574c;
+      --paper: #f3ecdf;
+      --card: #fffdf8;
+      --line: #e3d5c2;
+      --pine: #1e4a38;
+      --pine-deep: #143328;
+      --gold: #8d4e12;
+      --danger: #8c2f2f;
+      --ok: #1e4a38;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background:
+        radial-gradient(1200px 500px at 90% -10%, #efe2cc 0%, transparent 55%),
+        var(--paper);
+      font-family: "Source Sans 3", sans-serif;
+      line-height: 1.5;
+    }
+    a { color: var(--pine); }
+    header, main, footer { width: min(1080px, calc(100% - 32px)); margin: 0 auto; }
+    header {
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      align-items: center;
+      padding: 22px 0;
+    }
+    .brand { font-family: Fraunces, serif; font-size: 1.35rem; letter-spacing: -0.03em; }
+    .brand span { color: var(--gold); }
+    nav { display: flex; gap: 18px; align-items: center; }
+    nav a { color: var(--ink); text-decoration: none; font-weight: 600; }
+    .flag {
+      background: var(--pine-deep);
+      color: #f6f1e7;
+      border-radius: 999px;
+      padding: 6px 12px;
+      font-size: 0.85rem;
+    }
+    .hero { padding: 12px 0 8px; max-width: 720px; }
+    h1, h2, h3 { font-family: Fraunces, serif; font-weight: 560; letter-spacing: -0.03em; margin: 0 0 8px; }
+    h1 { font-size: clamp(2.4rem, 5vw, 4.4rem); line-height: 0.95; }
+    .lede { font-size: 1.2rem; color: var(--muted); max-width: 46rem; }
+    .layout { display: grid; grid-template-columns: 1.4fr 0.8fr; gap: 20px; margin: 28px 0 48px; }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      padding: 22px;
+      box-shadow: 0 16px 40px rgba(60, 40, 10, 0.05);
+    }
+    label { display: block; font-weight: 600; margin: 12px 0 6px; }
+    input, select, button { font: inherit; }
+    input, select {
+      width: 100%;
+      padding: 10px 12px;
+      border-radius: 10px;
+      border: 1px solid #d9cbb8;
+      background: #fff;
+      color: var(--ink);
+    }
+    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    button, .button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      margin-top: 16px;
+      background: var(--pine);
+      color: white;
+      border: 0;
+      border-radius: 999px;
+      padding: 12px 18px;
+      font-weight: 700;
+      cursor: pointer;
+      text-decoration: none;
+    }
+    button:disabled { opacity: 0.6; cursor: wait; }
+    .ghost { background: transparent; color: var(--pine); border: 1px solid var(--pine); }
+    .hint { margin: 4px 0 0; color: var(--muted); font-size: 0.92rem; font-weight: 400; }
+    .fees { list-style: none; padding: 0; margin: 8px 0 0; }
+    .fees li { display: grid; grid-template-columns: 1fr auto; gap: 4px 16px; padding: 8px 0; border-top: 1px solid var(--line); }
+    .fees em { grid-column: 1 / -1; font-style: normal; color: var(--muted); font-size: 0.9rem; }
+    .note, .error, .ok {
+      margin-top: 12px;
+      padding: 10px 12px;
+      border-radius: 10px;
+      background: #f7f1e6;
+    }
+    .error { background: #fdecec; color: var(--danger); }
+    .ok { background: #e8f3ec; color: var(--ok); }
+    ul, ol { margin: 8px 0 0; padding-left: 18px; }
+    .price { font-family: Fraunces, serif; font-size: 2.4rem; }
+    .price small { font-family: "Source Sans 3", sans-serif; font-size: 1rem; color: var(--muted); }
+    footer { padding: 10px 0 40px; color: var(--muted); font-size: 0.95rem; }
+    .downloads { display: flex; flex-wrap: wrap; gap: 8px; }
+    .downloads a { margin-top: 0; }
+    @media (max-width: 800px) {
+      .layout, .row { grid-template-columns: 1fr; }
+      nav .flag { display: none; }
+    }
   </style>
 </head>
 <body>
-  <h1>State Document Portal</h1>
-  <p>This is a demo front-end you can copy into your Manus site.</p>
+  <header>
+    <div class="brand">State <span>Document</span> Portal</div>
+    <nav>
+      <a href="#wizard">Build a packet</a>
+      <a href="#pricing">Trial</a>
+      <span class="flag">Not a government agency</span>
+    </nav>
+  </header>
+  <main>
+    <section class="hero">
+      <h1>Prepare a records request without guessing the paperwork.</h1>
+      <p class="lede">Every state and the District of Columbia. Choose marriage, divorce, death, property, your own bank records, a criminal-history request, or a motor-vehicle packet. You get a letter and a checklist. The office that keeps the record is the one that sends it.</p>
+    </section>
+    <section class="layout" id="wizard">
+      <div class="card">
+        <h2>Records wizard</h2>
+        <label for="place">State where the record is kept</label>
+        <select id="place"></select>
+        <p class="hint">Fifty states and the District of Columbia. Nevada shows the state fee schedule. Every other state shows the fee printed on its CDC or USA.gov page, or “set by the office” when that page lists more than one price.</p>
+        <label for="record">Record</label>
+        <select id="record"></select>
+        <p id="record-note" class="hint"></p>
+        <div id="fees"></div>
+        <form id="packet-form"></form>
+        <div id="status"></div>
+        <div id="results"></div>
+      </div>
+      <aside class="card" id="pricing">
+        <h2>Membership</h2>
+        <p class="price">$19.99 <small>/ month after a 7-day trial</small></p>
+        <p>The packet builder on this site is open so you can try it. Checkout turns on when Stripe price and secret keys are set for the site.</p>
+        <label for="email">Email</label>
+        <input id="email" type="email" autocomplete="email" placeholder="you@example.com">
+        <button id="start-trial" type="button">Start the trial</button>
+        <div id="billing-note" class="note">Checking billing…</div>
+        <h3>What the packet includes</h3>
+        <ul>
+          <li>A request letter you can sign</li>
+          <li>Where that record is actually kept</li>
+          <li>The ID, fee, and eligibility rules to confirm before you pay</li>
+        </ul>
+      </aside>
+    </section>
+  </main>
+  <footer>
+    Private document-preparation service. State agencies set their own forms, fees, and identity rules. Confirm the current instructions before you mail or upload anything.
+  </footer>
+  <script type="module">
+    const placeSelect = document.querySelector("#place");
+    const recordSelect = document.querySelector("#record");
+    const recordNote = document.querySelector("#record-note");
+    const feesEl = document.querySelector("#fees");
+    const form = document.querySelector("#packet-form");
+    const statusEl = document.querySelector("#status");
+    const resultsEl = document.querySelector("#results");
+    let records = [];
+    let places = [];
 
-  <div class="card">
-    <h2>Start Free Trial (Stripe)</h2>
-    <label>Email <input id="email" placeholder="you@domain.com"></label>
-    <label>User ID <input id="uid" placeholder="12345"></label>
-    <button id="startTrial">Start 7‑Day Free Trial → $19.99/mo</button>
-  </div>
+    function message(target, kind, text) {
+      target.className = kind;
+      target.textContent = text;
+    }
 
-  <div class="card">
-    <h2>DMV Records Wizard (50-state)</h2>
-    <div class="row">
-      <label>State
-        <select id="state">
-          <option value="NV">Nevada</option>
-          <option value="XX">Example State</option>
-        </select>
-      </label>
-      <label>Type
-        <select id="rtype">
-          <option value="driver_history">Driver History</option>
-        </select>
-      </label>
-    </div>
-    <div id="form"></div>
-    <div id="results"></div>
-  </div>
+    function selectedRecord() {
+      return records.find((record) => record.id === recordSelect.value) || records[0];
+    }
 
-<script type="module">
-  import { loadStripe } from "https://cdn.skypack.dev/@stripe/stripe-js";
-  const stripe = await loadStripe("pk_live_51RQLlGL0NMx5pBE9mz8nbVWW2X9sXthYgPx11tkO3cLXcBjiXJRK30OuzYMweC3hP88NXyXrhxMRkyy7A0l82Y0N00VUpSxsgI");
+    function visibleRecords() {
+      const code = placeSelect.value;
+      return records.filter((record) => record.kind !== "dmv" || record.state === code);
+    }
 
-  const API = location.origin; // same origin when running locally
-  document.getElementById("startTrial").onclick = async () => {
-    const email = document.getElementById("email").value;
-    const userId = document.getElementById("uid").value || "demo-user";
-    const r = await fetch(API + "/api/billing/checkout", {
-      method:"POST",
-      headers:{ "Content-Type":"application/json" },
-      body: JSON.stringify({ email, userId })
-    });
-    const { url } = await r.json();
-    location.href = url;
-  };
+    function endpoint(action) {
+      const record = selectedRecord();
+      if (record.kind === "dmv") {
+        return action === "schema"
+          ? `/api/dmv/schema/${record.state}/${record.type}`
+          : `/api/dmv/generate/${record.state}/${record.type}`;
+      }
+      const state = feeState();
+      const query = state ? `?state=${encodeURIComponent(state)}` : "";
+      return action === "schema"
+        ? `/api/records/schema/${record.id}${query}`
+        : `/api/records/generate/${record.id}`;
+    }
 
-  // Simple JSON-schema form renderer (very basic)
-  async function loadSchema() {
-    const state = document.getElementById("state").value;
-    const type = document.getElementById("rtype").value;
-    const r = await fetch(API + `/api/dmv/schema/${state}/${type}`, {
-      headers: { "X-Membership": "trialing" } // demo gate
-    });
-    const schema = await r.json();
-    renderForm(schema, state, type);
-  }
+    function feeState() {
+      return placeSelect.value;
+    }
 
-  function renderForm(schema, state, type) {
-    const f = document.getElementById("form");
-    f.innerHTML = "";
-    const form = document.createElement("form");
-    form.id = "jsonForm";
-    Object.entries(schema.properties).forEach(([name, def]) => {
-      const label = document.createElement("label");
-      label.textContent = def.title || name;
-      const input = document.createElement("input");
-      input.name = name;
-      input.placeholder = def.title || name;
-      if (def.default) input.value = def.default;
-      label.appendChild(input);
-      form.appendChild(label);
-    });
-    const btn = document.createElement("button");
-    btn.type = "submit";
-    btn.textContent = "Generate Packet";
-    form.appendChild(btn);
-    f.appendChild(form);
-
-    form.onsubmit = async (e) => {
-      e.preventDefault();
-      const data = Object.fromEntries(new FormData(form).entries());
-      const r = await fetch(API + `/api/dmv/generate/${state}/${type}`, {
-        method:"POST",
-        headers:{ "Content-Type":"application/json", "X-Membership":"trialing" },
-        body: JSON.stringify(data)
+    function renderRecordOptions() {
+      const previous = recordSelect.value;
+      const items = visibleRecords();
+      const groups = new Map();
+      items.forEach((record) => {
+        if (!groups.has(record.group)) groups.set(record.group, []);
+        groups.get(record.group).push(record);
       });
-      const out = await r.json();
-      const results = document.getElementById("results");
-      results.innerHTML = "<h3>Downloads</h3>" + out.files.map(u=>`<div><a target="_blank" href="${u}">${u.split("/").pop()}</a></div>`).join("") +
-                          "<h3>Next steps</h3><ol>" + out.nextSteps.map(s=>`<li>${s}</li>`).join("") + "</ol>";
-    };
-  }
+      recordSelect.innerHTML = [...groups.entries()].map(([group, groupItems]) => `
+        <optgroup label="${group}">
+          ${groupItems.map((item) => `<option value="${item.id}">${item.label}</option>`).join("")}
+        </optgroup>
+      `).join("");
+      if (previous && items.some((item) => item.id === previous)) {
+        recordSelect.value = previous;
+        return;
+      }
+      const previousRecord = records.find((record) => record.id === previous);
+      if (previousRecord?.kind === "dmv" && placeSelect.value) {
+        const twin = items.find((item) => item.kind === "dmv" && item.type === previousRecord.type);
+        if (twin) recordSelect.value = twin.id;
+      }
+    }
 
-  loadSchema();
-  document.getElementById("state").onchange = loadSchema;
-  document.getElementById("rtype").onchange = loadSchema;
-</script>
+    async function loadRecords() {
+      const [recordResponse, placeResponse] = await Promise.all([
+        fetch("/api/records"),
+        fetch("/api/states"),
+      ]);
+      const data = await recordResponse.json();
+      const placeData = await placeResponse.json();
+      records = data.records || [];
+      places = placeData.states || [];
+      placeSelect.innerHTML = `<option value="">Select a state</option>${places.map((place) => `<option value="${place.code}">${place.name}</option>`).join("")}`;
+      renderRecordOptions();
+      await loadSchema();
+    }
+
+    async function loadSchema() {
+      resultsEl.innerHTML = "";
+      statusEl.className = "";
+      statusEl.textContent = "";
+      const record = selectedRecord();
+      recordNote.textContent = record ? `${record.summary} ${record.limit}` : "";
+      const response = await fetch(endpoint("schema"));
+      const data = await response.json();
+      if (!response.ok) {
+        form.innerHTML = "";
+        feesEl.replaceChildren();
+        message(statusEl, "error", data.error || "Could not load this request.");
+        return;
+      }
+      renderFees(data.pricing);
+      renderForm(data.schema);
+    }
+
+    function money(amount) {
+      if (amount == null) return "Set by the office";
+      if (Number.isInteger(amount)) return `$${amount}`;
+      return `$${Number(amount).toFixed(2)}`;
+    }
+
+    function renderFees(pricing) {
+      feesEl.replaceChildren();
+      if (!pricing) return;
+      const heading = document.createElement("h3");
+      heading.textContent = pricing.online ? "Fees for online access" : "Fees";
+      feesEl.append(heading);
+      if (pricing.access) {
+        const access = document.createElement("p");
+        access.textContent = pricing.access;
+        feesEl.append(access);
+      }
+      const list = document.createElement("ul");
+      list.className = "fees";
+      for (const line of pricing.lines || []) {
+        const item = document.createElement("li");
+        const name = document.createElement("span");
+        name.textContent = line.group ? `${line.group}: ${line.label}` : line.label;
+        const price = document.createElement("strong");
+        price.textContent = line.amount == null ? "Set by the office" : `${money(line.amount)}${line.unit ? ` ${line.unit}` : ""}`;
+        item.append(name, price);
+        if (line.note) {
+          const note = document.createElement("em");
+          note.textContent = line.note;
+          item.append(note);
+        }
+        list.append(item);
+      }
+      feesEl.append(list);
+      const membership = document.createElement("p");
+      membership.className = "hint";
+      membership.textContent = "This site is $0 for 7 days, then $19.99 per month. That charge is separate from the office fees above.";
+      feesEl.append(membership);
+      if (pricing.url) {
+        const link = document.createElement("a");
+        link.href = pricing.url;
+        link.target = "_blank";
+        link.rel = "noopener";
+        link.textContent = "Open the official site";
+        feesEl.append(link);
+      }
+      if (pricing.sourceLabel) {
+        const source = document.createElement("p");
+        source.className = "hint";
+        source.textContent = `Fee source: ${pricing.sourceLabel}${pricing.asOf ? `, checked ${pricing.asOf}` : ""}.`;
+        feesEl.append(source);
+      }
+    }
+
+    function renderForm(schema) {
+      form.innerHTML = "";
+      const required = new Set(schema.required || []);
+      Object.entries(schema.properties || {}).forEach(([name, def]) => {
+        const label = document.createElement("label");
+        label.htmlFor = `field-${name}`;
+        label.textContent = `${def.title || name}${required.has(name) ? " *" : ""}`;
+        const control = Array.isArray(def.enum) ? document.createElement("select") : document.createElement("input");
+        control.id = `field-${name}`;
+        control.name = name;
+        control.required = required.has(name);
+        control.autocomplete = "off";
+        if (Array.isArray(def.enum)) {
+          const labels = def["x-labels"] || {};
+          control.append(new Option("Select…", ""));
+          def.enum.forEach((value) => control.append(new Option(labels[value] || value, value)));
+          if (def.default) control.value = def.default;
+          if ((name === "eventState" || name === "state") && placeSelect.value && labels[placeSelect.value]) {
+            control.value = placeSelect.value;
+          }
+        } else {
+          if (def.default) control.value = def.default;
+          if (name === "email") control.type = "email";
+          if (def.pattern) control.pattern = def.pattern;
+        }
+        form.append(label, control);
+        if (def.description) {
+          const hint = document.createElement("p");
+          hint.className = "hint";
+          hint.textContent = def.description;
+          form.append(hint);
+        }
+      });
+      const button = document.createElement("button");
+      button.type = "submit";
+      button.textContent = "Generate packet";
+      form.append(button);
+    }
+
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const button = form.querySelector("button");
+      button.disabled = true;
+      message(statusEl, "note", "Building the packet…");
+      resultsEl.innerHTML = "";
+      const payload = Object.fromEntries(new FormData(form).entries());
+      try {
+        const response = await fetch(endpoint("generate"), {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        const data = await response.json();
+        if (!response.ok) {
+          const detail = (data.details || []).map((item) => item.message || item.instancePath).filter(Boolean).join(" ");
+          message(statusEl, "error", `${data.error || "Could not generate the packet."} ${detail}`.trim());
+          return;
+        }
+        message(statusEl, "ok", data.disclaimer);
+        const links = (data.files || []).map((file) => {
+          const href = `data:application/pdf;base64,${file.base64}`;
+          return `<a class="button" download="${file.name}" href="${href}">${file.title || file.name}</a>`;
+        }).join("");
+        resultsEl.innerHTML = `<h3>Downloads</h3><div class="downloads">${links}</div><h3>Next steps</h3><ol>${(data.nextSteps || []).map((step) => `<li>${step}</li>`).join("")}</ol>`;
+      } catch (error) {
+        message(statusEl, "error", "The packet service did not respond.");
+      } finally {
+        button.disabled = false;
+      }
+    });
+
+    placeSelect.addEventListener("change", async () => {
+      renderRecordOptions();
+      await loadSchema();
+    });
+    recordSelect.addEventListener("change", loadSchema);
+    form.addEventListener("change", async (event) => {
+      if (event.target.name !== "eventState") return;
+      const record = selectedRecord();
+      if (!record || record.kind === "dmv") return;
+      const state = event.target.value;
+      const query = state ? `?state=${encodeURIComponent(state)}` : "";
+      const response = await fetch(`/api/fees/${encodeURIComponent(record.id)}${query}`);
+      if (response.ok) renderFees(await response.json());
+    });
+
+    document.querySelector("#start-trial").addEventListener("click", async () => {
+      const note = document.querySelector("#billing-note");
+      const email = document.querySelector("#email").value.trim();
+      message(note, "note", "Opening checkout…");
+      const response = await fetch("/api/billing/checkout", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ email, userId: email || "guest" }),
+      });
+      const data = await response.json();
+      if (!response.ok || !data.url) {
+        message(note, "error", data.error || "Checkout is unavailable.");
+        return;
+      }
+      location.href = data.url;
+    });
+
+    async function loadBilling() {
+      const note = document.querySelector("#billing-note");
+      try {
+        const response = await fetch("/api/billing/status");
+        const data = await response.json();
+        message(note, "note", data.configured
+          ? "Checkout is connected. The trial is configured on the Stripe price."
+          : "Checkout is off until STRIPE_SECRET_KEY and STRIPE_PRICE_ID are added in Netlify.");
+      } catch {
+        message(note, "error", "Billing status is unavailable.");
+      }
+    }
+
+    loadRecords().catch(() => message(statusEl, "error", "Could not reach the portal API."));
+    loadBilling();
+  </script>
 </body>
 </html>
