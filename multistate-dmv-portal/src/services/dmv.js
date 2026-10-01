@@ -60,6 +60,6 @@ export async function generatePacket(state, type, data) {
     return { status: 200, body: packet };
   } catch (error) {
     console.error(error);
-    return { status: 500, body: { error: "Failed to build packet" } };
+    return { status: 500, body: { error: "Failed to build packet", detail: error.message } };
   }
 }

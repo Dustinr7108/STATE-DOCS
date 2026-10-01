@@ -1,6 +1,7 @@
 import fs from "fs/promises";
 import path from "path";
 import { fileURLToPath } from "url";
+import { TEMPLATES } from "../data/templates.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
@@ -10,16 +11,15 @@ export async function readTemplate(relativePath) {
     path.join(process.cwd(), "multistate-dmv-portal", relativePath),
     path.resolve(here, "../../", relativePath),
     path.resolve(here, "../../../", relativePath),
-    path.resolve(here, "../../../../", relativePath),
   ];
-  const tried = [];
   for (const candidate of candidates) {
-    tried.push(candidate);
     try {
       return await fs.readFile(candidate);
     } catch {
-      // Try the next location. Bundled functions and local runs differ.
+      // Bundled Netlify functions fall through to the embedded copy.
     }
   }
-  throw new Error(`Template not found: ${relativePath} (looked in ${tried.join(", ")})`);
+  const embedded = TEMPLATES[relativePath];
+  if (embedded) return Buffer.from(embedded, "base64");
+  throw new Error(`Template not found: ${relativePath}`);
 }
