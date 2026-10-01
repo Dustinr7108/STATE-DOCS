@@ -2,35 +2,52 @@ import express from "express";
 import path from "path";
 import { fileURLToPath } from "url";
 import cors from "cors";
+import helmet from "helmet";
 import dotenv from "dotenv";
 import billingRouter from "./src/routes/billing.js";
 import dmvRouter from "./src/routes/dmv.js";
+import recordsRouter from "./src/routes/records.js";
 
 dotenv.config();
-const app = express();
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Health
-app.get("/health", (req,res)=>res.json({ ok:true }));
+export function createApp() {
+  const app = express();
+  app.disable("x-powered-by");
+  app.use(helmet({
+    contentSecurityPolicy: false,
+  }));
+  app.use(cors({ origin: true }));
 
-// Static files (front-end demo + generated packets)
-app.use("/", express.static(path.join(__dirname, "public")));
-app.use("/download", express.static(path.join(__dirname, "generated"), {
-  setHeaders: (res) => {
-    res.setHeader("Cache-Control", "private, max-age=600");
-  }
-}));
+  app.get("/health", (_req, res) => res.json({ ok: true }));
 
-// CORS for your Manus site
-app.use(cors({ origin: process.env.CLIENT_URL, credentials: true }));
+  app.use("/download", express.static(path.join(__dirname, "generated"), {
+    setHeaders: (res) => {
+      res.setHeader("Cache-Control", "private, max-age=600");
+      res.setHeader("Content-Disposition", "inline");
+    },
+  }));
 
-// Routers
-app.use(billingRouter);  // mounts /api/billing/*
-app.use(dmvRouter);      // mounts /api/dmv/*
+  app.use(billingRouter);
+  app.use(dmvRouter);
+  app.use(recordsRouter);
+  app.use("/", express.static(path.join(__dirname, "public")));
 
-// 404
-app.use((req,res)=>res.status(404).json({ error:"Not found" }));
+  app.use((req, res) => {
+    if (req.path.startsWith("/api/")) return res.status(404).json({ error: "Not found" });
+    return res.status(404).sendFile(path.join(__dirname, "public", "index.html"));
+  });
 
-const PORT = process.env.PORT || 3001;
-app.listen(PORT, ()=>console.log(`Server listening on :${PORT}`));
+  return app;
+}
+
+const isDirectRun = process.argv[1] && path.resolve(process.argv[1]) === __filename;
+
+if (isDirectRun) {
+  const port = process.env.PORT || 3001;
+  createApp().listen(port, () => {
+    console.log(`State Docs listening on :${port}`);
+  });
+}
