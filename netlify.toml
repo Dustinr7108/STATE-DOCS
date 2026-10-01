@@ -1,14 +1,13 @@
 [build]
-  base = "multistate-dmv-portal"
-  publish = "public"
+  publish = "multistate-dmv-portal/public"
 
 [build.environment]
   NODE_VERSION = "20"
 
 [functions]
-  directory = "netlify/functions"
+  directory = "multistate-dmv-portal/netlify/functions"
   node_bundler = "esbuild"
-  included_files = ["templates/**"]
+  included_files = ["multistate-dmv-portal/templates/**", "templates/**"]
 
 [[redirects]]
   from = "/billing/success"

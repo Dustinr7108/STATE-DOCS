@@ -7,8 +7,10 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 export async function readTemplate(relativePath) {
   const candidates = [
     path.join(process.cwd(), relativePath),
+    path.join(process.cwd(), "multistate-dmv-portal", relativePath),
     path.resolve(here, "../../", relativePath),
     path.resolve(here, "../../../", relativePath),
+    path.resolve(here, "../../../../", relativePath),
   ];
   const tried = [];
   for (const candidate of candidates) {

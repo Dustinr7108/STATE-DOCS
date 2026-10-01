@@ -82,6 +82,7 @@ export default async (req) => {
 };
 
 export const config = {
+  includedFiles: ["multistate-dmv-portal/templates/**", "templates/**"],
   path: [
     "/health",
     "/api/health",
