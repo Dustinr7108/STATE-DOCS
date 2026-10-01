@@ -1,70 +1,30 @@
-# Multi-State DMV Wizard + Stripe Subscription
+# State Docs
 
-Production-ready starter for a state document portal:
-- Stripe subscriptions with 7‑day trial → $19.99/mo
-- DMV Records Wizard using a 50‑state adapter pattern
-- PDF packet generator (pdf-lib) with cover sheet + instructions
-- Simple demo front-end you can copy into your Manus site
+A private assistant for getting official records when a state or county website will not finish the order.
 
-## 1) Quick start
+It covers all 50 states, the District of Columbia, and New York City. Birth, death, marriage, divorce, adoption, and your own driver record each have a mail path. California counties include the clerk-recorder mailing desk.
+
+## What it does
+
+- Builds a signed-request letter that lists every name the record may be filed under: the name you use now, the name at the event, and earlier names from marriage, divorce, adoption, or a court order.
+- Addresses the state office and, when the county keeps the record or publishes a mailing desk, the county clerk too.
+- Prints a checklist and an envelope sheet.
+- Links the official page and the office phone, including the path of calling and asking them to mail their own form.
+- For a sealed pre-adoption birth record, asks for the current certificate and for the office's written legal process. It does not bypass a court seal.
+
+State Docs is not a government agency. The office that keeps the record decides whether to release it. Confirm the fee on the official page before you mail a check.
+
+## Run
 
 ```bash
+cd multistate-dmv-portal
 npm install
-cp .env.example .env   # fill in Stripe keys & price id
+npm test
 npm start
-# open http://localhost:3001
 ```
 
-**Environment variables**
-- `CLIENT_URL` — your Manus front-end origin
-- `STRIPE_SECRET_KEY` — your Stripe secret key (start with TEST)
-- `STRIPE_PRICE_ID` — monthly $19.99 price with 7-day trial (create in Stripe dashboard)
-- `STRIPE_WEBHOOK_SECRET` — from Stripe → Developers → Webhooks
-- `PORT` — default 3001
+Open http://localhost:3001
 
-**Stripe Webhook**
-Create endpoint: `/api/billing/webhook` and subscribe to:
-- `checkout.session.completed`
-- `customer.subscription.updated`
-- `customer.subscription.deleted`
-- `invoice.payment_failed`
-- (optional) `customer.subscription.trial_will_end`
+Record packets do not require a subscription. Stripe checkout is optional and stays off until `STRIPE_SECRET_KEY`, `STRIPE_PRICE_ID`, and `CLIENT_URL` are set in `.env`.
 
-Update your database in the webhook handler (stubs provided).
-
-## 2) Multi-state DMV wizard
-
-Each state is an adapter in `src/states/` that specifies:
-- Forms and fill mapping (`overlay` or `acroform`)
-- Fees and submission channel (mail or portal)
-- Required documents and notes
-- JSON schema for the wizard fields per request type
-
-Add a new state in minutes:
-1. Copy `src/states/template.js` → `src/states/CA.js` (example).
-2. Drop official blank PDFs in `/templates/CA/`.
-3. Register the state in `src/states/index.js`.
-
-**Demo routes**
-- `GET /api/dmv/schema/:state/:type` → JSON Schema to render the form
-- `POST /api/dmv/generate/:state/:type` → returns file URLs + next steps
-
-## 3) Front-end
-
-See `public/index.html` for a drop-in demo:
-- Start free trial with Stripe Checkout
-- Render JSON Schema form for the selected state
-- Generate PDFs and show download links + instructions
-
-## 4) Security & compliance
-
-- Replace `src/auth/requireActiveMembership.js` with your real auth check.
-- Serve downloads via signed URLs in production.
-- Encrypt and auto-purge generated packets within 30–60 days.
-- Show clear disclaimer: private assistance service, not a government agency.
-- Follow DPPA and state rules for motor-vehicle data; collect user authorization.
-
-## 5) Replace placeholder PDFs
-
-The `/templates/*` PDFs are placeholders for development only.
-Replace with each state’s official blank forms before going live.
+Mailing addresses follow the 2026 Where-to-Write listings used by county recorders. Fees and hours change.

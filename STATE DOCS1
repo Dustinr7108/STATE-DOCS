@@ -281,7 +281,7 @@ STRIPE_WEBHOOK_SECRET=whsec_...         # created in next step
 <script src="https://js.stripe.com/v3"></script>
 <script type="module">
   import { loadStripe } from "https://cdn.skypack.dev/@stripe/stripe-js";
-  const stripe = await loadStripe("pk_live_51RQLlGL0NMx5pBE9mz8nbVWW2X9sXthYgPx11tkO3cLXcBjiXJRK30OuzYMweC3hP88NXyXrhxMRkyy7A0l82Y0N00VUpSxsgI");
+  const stripe = await loadStripe("pk_test_replace_with_your_publishable_key");
 
   document.querySelector("#startTrial").addEventListener("click", async () => {
     const r = await fetch("https://<YOUR-RAILWAY-APP>.up.railway.app/api/billing/checkout", {
