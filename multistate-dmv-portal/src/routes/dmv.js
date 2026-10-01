@@ -1,8 +1,12 @@
 import express from "express";
-import { generatePacket, getSchema, listStates } from "../services/dmv.js";
+import { generatePacket, getSchema, listPlaces, listStates } from "../services/dmv.js";
 import requireActiveMembership from "../auth/requireActiveMembership.js";
 
 const router = express.Router();
+
+router.get("/api/states", requireActiveMembership, (req, res) => {
+  res.json({ states: listPlaces() });
+});
 
 router.get("/api/dmv/states", requireActiveMembership, (req, res) => {
   res.json({ states: listStates() });

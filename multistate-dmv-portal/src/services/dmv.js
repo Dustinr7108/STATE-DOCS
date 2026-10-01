@@ -1,6 +1,7 @@
 import Ajv from "ajv";
 import addFormats from "ajv-formats";
 import { DMV_REGISTRY } from "../states/index.js";
+import { US_STATES } from "../states/us.js";
 import { buildPacket } from "../utils/packet.js";
 import { feesFor } from "../fees/schedule.js";
 
@@ -8,18 +9,30 @@ const ajv = new Ajv({ allErrors: true, strict: false });
 addFormats(ajv);
 const validators = new Map();
 
-export function listStates() {
-  return [...DMV_REGISTRY.values()].map((adapter) => ({
-    state: adapter.state,
-    displayName: adapter.displayName,
-    supports: Object.keys(adapter.schema || {}),
-    requiresNotary: adapter.requiresNotary,
-    fees: adapter.fees,
-    submission: {
-      channel: adapter.submission.channel,
-      portalUrl: adapter.submission.portalUrl || null,
-    },
+export function listPlaces() {
+  return US_STATES.map((place) => ({
+    code: place.code,
+    name: place.name,
+    vitalRecordsUrl: place.cdcUrl,
+    motorVehicleUrl: place.dmvUrl,
   }));
+}
+
+export function listStates() {
+  return [...DMV_REGISTRY.values()]
+    .filter((adapter) => adapter.state !== "XX")
+    .sort((a, b) => a.displayName.localeCompare(b.displayName))
+    .map((adapter) => ({
+      state: adapter.state,
+      displayName: adapter.displayName,
+      supports: Object.keys(adapter.schema || {}),
+      requiresNotary: adapter.requiresNotary,
+      fees: adapter.fees,
+      submission: {
+        channel: adapter.submission.channel,
+        portalUrl: adapter.submission.portalUrl || null,
+      },
+    }));
 }
 
 export function getSchema(state, type) {

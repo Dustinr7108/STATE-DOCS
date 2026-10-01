@@ -9,7 +9,7 @@ router.get("/api/records", requireActiveMembership, (req, res) => {
 });
 
 router.get("/api/records/schema/:id", requireActiveMembership, (req, res) => {
-  const result = getRecordSchema(req.params.id);
+  const result = getRecordSchema(req.params.id, req.query.state);
   res.status(result.status).json(result.body);
 });
 

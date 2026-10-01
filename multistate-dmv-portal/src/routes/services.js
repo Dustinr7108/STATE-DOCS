@@ -17,11 +17,11 @@ router.get("/api/services/:id", requireActiveMembership, (req, res) => {
 router.get("/api/fees", requireActiveMembership, (req, res) => {
   const record = req.query.record;
   if (!record) return res.json({ membership: MEMBERSHIP, services: listServices() });
-  res.json(feesFor(String(record)));
+  res.json(feesFor(String(record), req.query.state));
 });
 
 router.get("/api/fees/:recordId", requireActiveMembership, (req, res) => {
-  res.json(feesFor(req.params.recordId));
+  res.json(feesFor(req.params.recordId, req.query.state));
 });
 
 export default router;

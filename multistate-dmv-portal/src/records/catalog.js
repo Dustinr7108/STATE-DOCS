@@ -1,10 +1,23 @@
+import { normalizeState, STATE_CODES, STATE_LABELS, stateByCode } from "../states/us.js";
+
+function placeName(code) {
+  return stateByCode(normalizeState(code))?.name || code || "the state you named";
+}
+
+const stateChoice = (title) => ({
+  type: "string",
+  title,
+  enum: STATE_CODES,
+  "x-labels": STATE_LABELS,
+});
+
 const contactFields = {
   yourName: { type: "string", title: "Your full legal name" },
   email: { type: "string", title: "Email" },
   phone: { type: "string", title: "Phone" },
   address1: { type: "string", title: "Mailing address" },
   city: { type: "string", title: "City" },
-  state: { type: "string", title: "Your state" },
+  state: stateChoice("Your state"),
   zip: { type: "string", title: "ZIP" },
 };
 
@@ -56,14 +69,14 @@ export const RECORDS = [
       `Requester: ${data.yourName}`,
       `Mailing address: ${data.address1}, ${data.city}, ${data.state} ${data.zip}`,
       `Phone: ${data.phone}  Email: ${data.email}`,
-      `State where the events happened: ${data.eventState}`,
+      `State where the events happened: ${placeName(data.eventState)}`,
       "",
       "Marriage, divorce, and death certificates",
       "Request these from the state vital records office where the event occurred. Start at https://www.cdc.gov/nchs/w2w/index.htm. A divorce decree may instead be at the clerk of the court that entered it.",
       "",
       "Property",
       data.propertyAddress
-        ? `Ask the county recorder and assessor for ${data.propertyAddress} in ${data.propertyCounty || "the property county"}, ${data.eventState}.`
+        ? `Ask the county recorder and assessor for ${data.propertyAddress} in ${data.propertyCounty || "the property county"}, ${placeName(data.eventState)}.`
         : "Ask the county recorder for the deed and the assessor for the tax record in the county where the property sits.",
       "",
       "Bank records",
@@ -79,7 +92,7 @@ export const RECORDS = [
       required: ["yourName", "email", "phone", "address1", "city", "state", "zip", "eventState"],
       properties: {
         ...contactFields,
-        eventState: { type: "string", title: "State where the records are" },
+        eventState: stateChoice("State where the records are"),
         propertyAddress: { type: "string", title: "Property address, if you need a deed" },
         propertyCounty: { type: "string", title: "Property county" },
         bankName: { type: "string", title: "Your bank, if you need your own statements" },
@@ -115,7 +128,7 @@ export const RECORDS = [
         party2Name: { type: "string", title: "Spouse 2 full name" },
         eventDate: { type: "string", title: "Marriage date or approximate year" },
         eventCity: { type: "string", title: "City or county of the marriage" },
-        eventState: { type: "string", title: "State where the marriage happened" },
+        eventState: stateChoice("State where the marriage happened"),
         purpose: { type: "string", title: "Why you need the certificate", default: "Personal records" },
       },
     },
@@ -149,7 +162,7 @@ export const RECORDS = [
         party2Name: { type: "string", title: "Party 2 full name" },
         eventDate: { type: "string", title: "Decree date or approximate year" },
         eventCounty: { type: "string", title: "County of the divorce" },
-        eventState: { type: "string", title: "State where the divorce was entered" },
+        eventState: stateChoice("State where the divorce was entered"),
         caseNumber: { type: "string", title: "Case number, if you have it" },
         purpose: { type: "string", title: "Why you need the record", default: "Personal records" },
       },
@@ -183,7 +196,7 @@ export const RECORDS = [
         decedentName: { type: "string", title: "Decedent's full legal name" },
         eventDate: { type: "string", title: "Date of death or approximate year" },
         eventCity: { type: "string", title: "City or county of death" },
-        eventState: { type: "string", title: "State where the death occurred" },
+        eventState: stateChoice("State where the death occurred"),
         purpose: { type: "string", title: "Why you need the certificate", default: "Estate or personal records" },
       },
     },
@@ -214,7 +227,7 @@ export const RECORDS = [
         ...contactFields,
         propertyAddress: { type: "string", title: "Property street address" },
         propertyCounty: { type: "string", title: "County" },
-        eventState: { type: "string", title: "State" },
+        eventState: stateChoice("State"),
         parcelNumber: { type: "string", title: "Parcel or APN, if you have it" },
         ownerName: { type: "string", title: "Owner name on the deed, if known" },
         recordNeeded: { type: "string", title: "What you need", enum: ["Deed", "Assessment or tax record", "Both the deed and the tax record"] },
@@ -315,7 +328,7 @@ export const RECORDS = [
         ...contactFields,
         courtName: { type: "string", title: "Court name" },
         eventCounty: { type: "string", title: "County, or Federal if it is a federal case" },
-        eventState: { type: "string", title: "State" },
+        eventState: stateChoice("State"),
         caseNumber: { type: "string", title: "Case number, if you have it" },
         partyName: { type: "string", title: "Party name on the public docket" },
         recordNeeded: { type: "string", title: "What you need", enum: ["Docket sheet", "A specific public filing", "The public case file"] },

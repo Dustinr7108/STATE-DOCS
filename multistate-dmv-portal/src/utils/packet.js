@@ -3,6 +3,7 @@ import { v4 as uuid } from "uuid";
 import { drawBlock, plainText } from "./pdfText.js";
 import { readTemplate } from "./templates.js";
 import { formatMoney } from "../fees/schedule.js";
+import { normalizeState, stateByCode } from "../states/us.js";
 
 const FIELD_LABELS = {
   fullName: "Full legal name",
@@ -111,6 +112,12 @@ function labelFor(key) {
   return spaced.charAt(0).toUpperCase() + spaced.slice(1);
 }
 
+function shown(key, value) {
+  const text = value == null ? "" : String(value);
+  const place = (key === "state" || key === "eventState") ? stateByCode(normalizeState(text)) : null;
+  return place ? place.name : text;
+}
+
 function valueFor(data, key) {
   if (key === "cityStateZip") return `${data.city || ""}, ${data.state || ""} ${data.zip || ""}`.trim();
   const value = data?.[key];
@@ -183,7 +190,7 @@ async function makeCover({ state, requestType, address, portalUrl, fees, require
   heading("Details you entered", 13);
   for (const [key, value] of Object.entries(details || {})) {
     if (value == null || String(value).trim() === "") continue;
-    body(`${labelFor(key)}: ${value}`);
+    body(`${labelFor(key)}: ${shown(key, value)}`);
   }
 
   heading("Before you submit", 13);
@@ -222,7 +229,7 @@ async function makeLetter(adapter, data) {
   } else {
     for (const [key, value] of Object.entries(data || {})) {
       if (value == null || String(value).trim() === "") continue;
-      body(`${labelFor(key)}: ${value}`);
+      body(`${labelFor(key)}: ${shown(key, value)}`);
     }
   }
   body("Signature: ________________________________");

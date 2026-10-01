@@ -2,7 +2,7 @@
 
 State document portal:
 - Stripe subscriptions with a 7-day trial, then $19.99/mo, when Stripe keys are set
-- Records wizard for marriage, divorce, death, property, your own bank records, criminal history, public court files, and Nevada motor-vehicle packets
+- Records wizard for marriage, divorce, death, property, your own bank records, criminal history, public court files, and motor-vehicle request letters for every state and the District of Columbia. Nevada motor-vehicle packets use the published Nevada DMV fees. Other states link to the agency USA.gov lists and show a fee only when an official page prints one price.
 - PDF packet generator (pdf-lib) with a cover sheet and instructions
 - Static front end hosted on Netlify, with the API in Netlify Functions
 
@@ -32,18 +32,11 @@ Create endpoint: `/api/billing/webhook` and subscribe to:
 
 Update your database in the webhook handler (stubs provided).
 
-## 2) Multi-state DMV wizard
+## 2) Multi-state wizard
 
-Each state is an adapter in `src/states/` that specifies:
-- Forms and fill mapping (`overlay` or `acroform`)
-- Fees and submission channel (mail or portal)
-- Required documents and notes
-- JSON schema for the wizard fields per request type
+`src/states/us.js` lists the 50 states and the District of Columbia. Vital-record links are the CDC where-to-write pages. Motor-vehicle links are the agencies on USA.gov. Nevada keeps its own DMV fee schedule and preparation forms. Every other state gets a request letter, not a copied government form.
 
-Add a new state in minutes:
-1. Copy `src/states/template.js` → `src/states/CA.js` (example).
-2. Drop official blank PDFs in `/templates/CA/`.
-3. Register the state in `src/states/index.js`.
+`GET /api/states` returns that list. Record fees accept `?state=CA`. Nevada marriage, divorce, and death prices appear only when the state is Nevada.
 
 **Demo routes**
 - `GET /api/dmv/schema/:state/:type` → JSON Schema to render the form

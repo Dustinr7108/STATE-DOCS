@@ -125,11 +125,14 @@
   <main>
     <section class="hero">
       <h1>Prepare a records request without guessing the paperwork.</h1>
-      <p class="lede">Choose marriage, divorce, death, property, your own bank records, a criminal-history request, or a motor-vehicle packet. You get a letter and a checklist. The office that keeps the record is the one that sends it.</p>
+      <p class="lede">Every state and the District of Columbia. Choose marriage, divorce, death, property, your own bank records, a criminal-history request, or a motor-vehicle packet. You get a letter and a checklist. The office that keeps the record is the one that sends it.</p>
     </section>
     <section class="layout" id="wizard">
       <div class="card">
         <h2>Records wizard</h2>
+        <label for="place">State where the record is kept</label>
+        <select id="place"></select>
+        <p class="hint">Fifty states and the District of Columbia. Nevada shows the state fee schedule. Every other state shows the fee printed on its CDC or USA.gov page, or “set by the office” when that page lists more than one price.</p>
         <label for="record">Record</label>
         <select id="record"></select>
         <p id="record-note" class="hint"></p>
@@ -159,6 +162,7 @@
     Private document-preparation service. State agencies set their own forms, fees, and identity rules. Confirm the current instructions before you mail or upload anything.
   </footer>
   <script type="module">
+    const placeSelect = document.querySelector("#place");
     const recordSelect = document.querySelector("#record");
     const recordNote = document.querySelector("#record-note");
     const feesEl = document.querySelector("#fees");
@@ -166,6 +170,7 @@
     const statusEl = document.querySelector("#status");
     const resultsEl = document.querySelector("#results");
     let records = [];
+    let places = [];
 
     function message(target, kind, text) {
       target.className = kind;
@@ -176,6 +181,11 @@
       return records.find((record) => record.id === recordSelect.value) || records[0];
     }
 
+    function visibleRecords() {
+      const code = placeSelect.value;
+      return records.filter((record) => record.kind !== "dmv" || record.state === code);
+    }
+
     function endpoint(action) {
       const record = selectedRecord();
       if (record.kind === "dmv") {
@@ -183,25 +193,52 @@
           ? `/api/dmv/schema/${record.state}/${record.type}`
           : `/api/dmv/generate/${record.state}/${record.type}`;
       }
+      const state = feeState();
+      const query = state ? `?state=${encodeURIComponent(state)}` : "";
       return action === "schema"
-        ? `/api/records/schema/${record.id}`
+        ? `/api/records/schema/${record.id}${query}`
         : `/api/records/generate/${record.id}`;
     }
 
-    async function loadRecords() {
-      const response = await fetch("/api/records");
-      const data = await response.json();
-      records = data.records || [];
+    function feeState() {
+      return placeSelect.value;
+    }
+
+    function renderRecordOptions() {
+      const previous = recordSelect.value;
+      const items = visibleRecords();
       const groups = new Map();
-      records.forEach((record) => {
+      items.forEach((record) => {
         if (!groups.has(record.group)) groups.set(record.group, []);
         groups.get(record.group).push(record);
       });
-      recordSelect.innerHTML = [...groups.entries()].map(([group, items]) => `
+      recordSelect.innerHTML = [...groups.entries()].map(([group, groupItems]) => `
         <optgroup label="${group}">
-          ${items.map((item) => `<option value="${item.id}">${item.label}</option>`).join("")}
+          ${groupItems.map((item) => `<option value="${item.id}">${item.label}</option>`).join("")}
         </optgroup>
       `).join("");
+      if (previous && items.some((item) => item.id === previous)) {
+        recordSelect.value = previous;
+        return;
+      }
+      const previousRecord = records.find((record) => record.id === previous);
+      if (previousRecord?.kind === "dmv" && placeSelect.value) {
+        const twin = items.find((item) => item.kind === "dmv" && item.type === previousRecord.type);
+        if (twin) recordSelect.value = twin.id;
+      }
+    }
+
+    async function loadRecords() {
+      const [recordResponse, placeResponse] = await Promise.all([
+        fetch("/api/records"),
+        fetch("/api/states"),
+      ]);
+      const data = await recordResponse.json();
+      const placeData = await placeResponse.json();
+      records = data.records || [];
+      places = placeData.states || [];
+      placeSelect.innerHTML = `<option value="">Select a state</option>${places.map((place) => `<option value="${place.code}">${place.name}</option>`).join("")}`;
+      renderRecordOptions();
       await loadSchema();
     }
 
@@ -290,9 +327,13 @@
         control.required = required.has(name);
         control.autocomplete = "off";
         if (Array.isArray(def.enum)) {
+          const labels = def["x-labels"] || {};
           control.append(new Option("Select…", ""));
-          def.enum.forEach((value) => control.append(new Option(value, value)));
+          def.enum.forEach((value) => control.append(new Option(labels[value] || value, value)));
           if (def.default) control.value = def.default;
+          if ((name === "eventState" || name === "state") && placeSelect.value && labels[placeSelect.value]) {
+            control.value = placeSelect.value;
+          }
         } else {
           if (def.default) control.value = def.default;
           if (name === "email") control.type = "email";
@@ -344,7 +385,20 @@
       }
     });
 
+    placeSelect.addEventListener("change", async () => {
+      renderRecordOptions();
+      await loadSchema();
+    });
     recordSelect.addEventListener("change", loadSchema);
+    form.addEventListener("change", async (event) => {
+      if (event.target.name !== "eventState") return;
+      const record = selectedRecord();
+      if (!record || record.kind === "dmv") return;
+      const state = event.target.value;
+      const query = state ? `?state=${encodeURIComponent(state)}` : "";
+      const response = await fetch(`/api/fees/${encodeURIComponent(record.id)}${query}`);
+      if (response.ok) renderFees(await response.json());
+    });
 
     document.querySelector("#start-trial").addEventListener("click", async () => {
       const note = document.querySelector("#billing-note");

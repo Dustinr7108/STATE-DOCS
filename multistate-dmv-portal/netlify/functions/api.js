@@ -1,4 +1,4 @@
-import { generatePacket, getSchema, listStates } from "../../src/services/dmv.js";
+import { generatePacket, getSchema, listPlaces, listStates } from "../../src/services/dmv.js";
 import { generateRecord, getRecordSchema, listCatalog } from "../../src/services/records.js";
 import { feesFor, getService, listServices, MEMBERSHIP } from "../../src/fees/schedule.js";
 import { billingStatus, createCheckout, receiveWebhook } from "../../src/services/billing.js";
@@ -40,12 +40,12 @@ export default async (req) => {
   if (req.method === "GET" && pathname === "/api/fees") {
     const record = url.searchParams.get("record");
     if (!record) return json(200, { membership: MEMBERSHIP, services: listServices() });
-    return json(200, feesFor(record));
+    return json(200, feesFor(record, url.searchParams.get("state")));
   }
 
   const feeMatch = pathname.match(/^\/api\/fees\/([^/]+)$/);
   if (req.method === "GET" && feeMatch) {
-    return json(200, feesFor(decodeURIComponent(feeMatch[1])));
+    return json(200, feesFor(decodeURIComponent(feeMatch[1]), url.searchParams.get("state")));
   }
 
   if (req.method === "GET" && pathname === "/api/records") {
@@ -56,7 +56,7 @@ export default async (req) => {
   const recordSchema = pathname.match(/^\/api\/records\/schema\/([^/]+)$/);
   if (req.method === "GET" && recordSchema) {
     if (memberDenied) return json(402, { error: "Membership required" });
-    const result = getRecordSchema(decodeURIComponent(recordSchema[1]));
+    const result = getRecordSchema(decodeURIComponent(recordSchema[1]), url.searchParams.get("state"));
     return json(result.status, result.body);
   }
 
@@ -71,6 +71,11 @@ export default async (req) => {
     }
     const result = await generateRecord(decodeURIComponent(recordGenerate[1]), data);
     return json(result.status, result.body);
+  }
+
+  if (req.method === "GET" && pathname === "/api/states") {
+    if (memberDenied) return json(402, { error: "Membership required" });
+    return json(200, { states: listPlaces() });
   }
 
   if (req.method === "GET" && pathname === "/api/dmv/states") {
@@ -142,6 +147,7 @@ export const config = {
     "/api/records",
     "/api/records/schema/:id",
     "/api/records/generate/:id",
+    "/api/states",
     "/api/dmv/states",
     "/api/dmv/schema/:state/:type",
     "/api/dmv/generate/:state/:type",
