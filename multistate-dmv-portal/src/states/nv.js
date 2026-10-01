@@ -61,6 +61,23 @@ export const NV = {
         email: { type: "string", title: "Email" },
         purpose: { type: "string", title: "Purpose", default: "Own record" }
       }
+    },
+    vehicle_record: {
+      type: "object",
+      required: ["fullName", "vin", "address1", "city", "state", "zip", "phone", "email"],
+      properties: {
+        fullName: { type: "string", title: "Full legal name" },
+        vin: { type: "string", title: "Vehicle identification number" },
+        plate: { type: "string", title: "License plate" },
+        address1: { type: "string", title: "Address line 1" },
+        address2: { type: "string", title: "Address line 2" },
+        city: { type: "string", title: "City" },
+        state: { type: "string", title: "State", default: "NV" },
+        zip: { type: "string", title: "ZIP" },
+        phone: { type: "string", title: "Phone" },
+        email: { type: "string", title: "Email" },
+        purpose: { type: "string", title: "Purpose", default: "Own vehicle record" }
+      }
     }
   }
 };

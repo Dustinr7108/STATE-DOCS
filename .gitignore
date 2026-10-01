@@ -1,0 +1,5 @@
+node_modules/
+.netlify/
+multistate-dmv-portal/generated/
+.env
+*.log
