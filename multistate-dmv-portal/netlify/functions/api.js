@@ -1,4 +1,5 @@
 import { generatePacket, getSchema, listStates } from "../../src/services/dmv.js";
+import { generateRecord, getRecordSchema, listCatalog } from "../../src/services/records.js";
 import { billingStatus, createCheckout, receiveWebhook } from "../../src/services/billing.js";
 import { envValue } from "../../src/services/env.js";
 
@@ -23,6 +24,31 @@ export default async (req) => {
   const membershipRequired = envValue("ENFORCE_MEMBERSHIP") === "true";
   const membership = req.headers.get("x-membership");
   const memberDenied = membershipRequired && membership !== "active" && membership !== "trialing";
+
+  if (req.method === "GET" && pathname === "/api/records") {
+    if (memberDenied) return json(402, { error: "Membership required" });
+    return json(200, { records: listCatalog() });
+  }
+
+  const recordSchema = pathname.match(/^\/api\/records\/schema\/([^/]+)$/);
+  if (req.method === "GET" && recordSchema) {
+    if (memberDenied) return json(402, { error: "Membership required" });
+    const result = getRecordSchema(decodeURIComponent(recordSchema[1]));
+    return json(result.status, result.body);
+  }
+
+  const recordGenerate = pathname.match(/^\/api\/records\/generate\/([^/]+)$/);
+  if (req.method === "POST" && recordGenerate) {
+    if (memberDenied) return json(402, { error: "Membership required" });
+    let data;
+    try {
+      data = await req.json();
+    } catch {
+      return json(400, { error: "Invalid JSON" });
+    }
+    const result = await generateRecord(decodeURIComponent(recordGenerate[1]), data);
+    return json(result.status, result.body);
+  }
 
   if (req.method === "GET" && pathname === "/api/dmv/states") {
     if (memberDenied) return json(402, { error: "Membership required" });
@@ -86,6 +112,9 @@ export const config = {
   path: [
     "/health",
     "/api/health",
+    "/api/records",
+    "/api/records/schema/:id",
+    "/api/records/generate/:id",
     "/api/dmv/states",
     "/api/dmv/schema/:state/:type",
     "/api/dmv/generate/:state/:type",

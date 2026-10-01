@@ -1,4 +1,5 @@
 import { generatePacket, listStates } from "../src/services/dmv.js";
+import { generateRecord, listCatalog } from "../src/services/records.js";
 import { billingStatus, createCheckout } from "../src/services/billing.js";
 
 const states = listStates();
@@ -36,6 +37,43 @@ const vehicle = await generatePacket("NV", "vehicle_record", {
   plate: "ABC123",
 });
 if (vehicle.status !== 200) throw new Error(JSON.stringify(vehicle.body));
+
+const marriage = await generateRecord("marriage", {
+  yourName: "Ada Lovelace",
+  email: "ada@example.com",
+  phone: "7755550100",
+  address1: "1 Analytical Way",
+  city: "Carson City",
+  state: "NV",
+  zip: "89701",
+  relationship: "I am one of the spouses",
+  party1Name: "Ada Lovelace",
+  party2Name: "William King",
+  eventState: "NV",
+});
+if (marriage.status !== 200) throw new Error(JSON.stringify(marriage.body));
+if (Buffer.from(marriage.body.files[0].base64, "base64").subarray(0, 5).toString() !== "%PDF-") {
+  throw new Error("marriage letter is not a PDF");
+}
+
+const bank = await generateRecord("bank", {
+  yourName: "Ada Lovelace",
+  email: "ada@example.com",
+  phone: "7755550100",
+  address1: "1 Analytical Way",
+  city: "Carson City",
+  state: "NV",
+  zip: "89701",
+  bankName: "Example Credit Union",
+  accountLast4: "1234",
+  dateRange: "2025",
+});
+if (bank.status !== 400) throw new Error("bank request must confirm the account holder");
+
+const catalog = listCatalog();
+for (const id of ["all", "marriage", "divorce", "death", "property", "bank", "criminal_history", "court_record"]) {
+  if (!catalog.some((item) => item.id === id)) throw new Error(`missing ${id}`);
+}
 
 const status = billingStatus();
 if (status.body.configured) throw new Error("billing should be unconfigured in the smoke test");

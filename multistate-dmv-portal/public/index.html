@@ -89,6 +89,7 @@
     }
     button:disabled { opacity: 0.6; cursor: wait; }
     .ghost { background: transparent; color: var(--pine); border: 1px solid var(--pine); }
+    .hint { margin: 4px 0 0; color: var(--muted); font-size: 0.92rem; font-weight: 400; }
     .note, .error, .ok {
       margin-top: 12px;
       padding: 10px 12px;
@@ -121,22 +122,14 @@
   <main>
     <section class="hero">
       <h1>Prepare a records request without guessing the paperwork.</h1>
-      <p class="lede">Pick a supported state, enter the details the agency asks for, and download a preparation packet with a cover sheet, fee notes, and the next steps. You still submit the official forms yourself.</p>
+      <p class="lede">Choose marriage, divorce, death, property, your own bank records, a criminal-history request, or a motor-vehicle packet. You get a letter and a checklist. The office that keeps the record is the one that sends it.</p>
     </section>
     <section class="layout" id="wizard">
       <div class="card">
         <h2>Records wizard</h2>
-        <p>Nevada is the live adapter. The example template shows how another state is added.</p>
-        <div class="row">
-          <div>
-            <label for="state">State</label>
-            <select id="state"></select>
-          </div>
-          <div>
-            <label for="rtype">Request</label>
-            <select id="rtype"></select>
-          </div>
-        </div>
+        <label for="record">Record</label>
+        <select id="record"></select>
+        <p id="record-note" class="hint"></p>
         <form id="packet-form"></form>
         <div id="status"></div>
         <div id="results"></div>
@@ -151,9 +144,9 @@
         <div id="billing-note" class="note">Checking billing…</div>
         <h3>What the packet includes</h3>
         <ul>
-          <li>A cover sheet with the mailing address or portal link</li>
-          <li>The details you typed, so you can copy them onto the official form</li>
-          <li>Fee, notary, and attachment reminders</li>
+          <li>A request letter you can sign</li>
+          <li>Where that record is actually kept</li>
+          <li>The ID, fee, and eligibility rules to confirm before you pay</li>
         </ul>
       </aside>
     </section>
@@ -162,42 +155,58 @@
     Private document-preparation service. State agencies set their own forms, fees, and identity rules. Confirm the current instructions before you mail or upload anything.
   </footer>
   <script type="module">
-    const TYPE_LABELS = {
-      driver_history: "Driver history",
-      vehicle_record: "Vehicle record",
-      title_history: "Title history",
-    };
-    const stateSelect = document.querySelector("#state");
-    const typeSelect = document.querySelector("#rtype");
+    const recordSelect = document.querySelector("#record");
+    const recordNote = document.querySelector("#record-note");
     const form = document.querySelector("#packet-form");
     const statusEl = document.querySelector("#status");
     const resultsEl = document.querySelector("#results");
-    let states = [];
+    let records = [];
 
     function message(target, kind, text) {
       target.className = kind;
       target.textContent = text;
     }
 
-    async function loadStates() {
-      const response = await fetch("/api/dmv/states");
-      const data = await response.json();
-      states = data.states || [];
-      stateSelect.innerHTML = states.map((state) => `<option value="${state.state}">${state.displayName}</option>`).join("");
-      fillTypes();
-      await loadSchema();
+    function selectedRecord() {
+      return records.find((record) => record.id === recordSelect.value) || records[0];
     }
 
-    function fillTypes() {
-      const current = states.find((state) => state.state === stateSelect.value) || states[0];
-      typeSelect.innerHTML = (current?.supports || []).map((type) => `<option value="${type}">${TYPE_LABELS[type] || type}</option>`).join("");
+    function endpoint(action) {
+      const record = selectedRecord();
+      if (record.kind === "dmv") {
+        return action === "schema"
+          ? `/api/dmv/schema/${record.state}/${record.type}`
+          : `/api/dmv/generate/${record.state}/${record.type}`;
+      }
+      return action === "schema"
+        ? `/api/records/schema/${record.id}`
+        : `/api/records/generate/${record.id}`;
+    }
+
+    async function loadRecords() {
+      const response = await fetch("/api/records");
+      const data = await response.json();
+      records = data.records || [];
+      const groups = new Map();
+      records.forEach((record) => {
+        if (!groups.has(record.group)) groups.set(record.group, []);
+        groups.get(record.group).push(record);
+      });
+      recordSelect.innerHTML = [...groups.entries()].map(([group, items]) => `
+        <optgroup label="${group}">
+          ${items.map((item) => `<option value="${item.id}">${item.label}</option>`).join("")}
+        </optgroup>
+      `).join("");
+      await loadSchema();
     }
 
     async function loadSchema() {
       resultsEl.innerHTML = "";
       statusEl.className = "";
       statusEl.textContent = "";
-      const response = await fetch(`/api/dmv/schema/${stateSelect.value}/${typeSelect.value}`);
+      const record = selectedRecord();
+      recordNote.textContent = record ? `${record.summary} ${record.limit}` : "";
+      const response = await fetch(endpoint("schema"));
       const data = await response.json();
       if (!response.ok) {
         form.innerHTML = "";
@@ -214,14 +223,27 @@
         const label = document.createElement("label");
         label.htmlFor = `field-${name}`;
         label.textContent = `${def.title || name}${required.has(name) ? " *" : ""}`;
-        const input = document.createElement("input");
-        input.id = `field-${name}`;
-        input.name = name;
-        input.required = required.has(name);
-        input.autocomplete = "off";
-        if (def.default) input.value = def.default;
-        if (name === "email") input.type = "email";
-        form.append(label, input);
+        const control = Array.isArray(def.enum) ? document.createElement("select") : document.createElement("input");
+        control.id = `field-${name}`;
+        control.name = name;
+        control.required = required.has(name);
+        control.autocomplete = "off";
+        if (Array.isArray(def.enum)) {
+          control.append(new Option("Select…", ""));
+          def.enum.forEach((value) => control.append(new Option(value, value)));
+          if (def.default) control.value = def.default;
+        } else {
+          if (def.default) control.value = def.default;
+          if (name === "email") control.type = "email";
+          if (def.pattern) control.pattern = def.pattern;
+        }
+        form.append(label, control);
+        if (def.description) {
+          const hint = document.createElement("p");
+          hint.className = "hint";
+          hint.textContent = def.description;
+          form.append(hint);
+        }
       });
       const button = document.createElement("button");
       button.type = "submit";
@@ -237,7 +259,7 @@
       resultsEl.innerHTML = "";
       const payload = Object.fromEntries(new FormData(form).entries());
       try {
-        const response = await fetch(`/api/dmv/generate/${stateSelect.value}/${typeSelect.value}`, {
+        const response = await fetch(endpoint("generate"), {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify(payload),
@@ -261,11 +283,7 @@
       }
     });
 
-    stateSelect.addEventListener("change", async () => {
-      fillTypes();
-      await loadSchema();
-    });
-    typeSelect.addEventListener("change", loadSchema);
+    recordSelect.addEventListener("change", loadSchema);
 
     document.querySelector("#start-trial").addEventListener("click", async () => {
       const note = document.querySelector("#billing-note");
@@ -297,7 +315,7 @@
       }
     }
 
-    loadStates().catch(() => message(statusEl, "error", "Could not reach the portal API."));
+    loadRecords().catch(() => message(statusEl, "error", "Could not reach the portal API."));
     loadBilling();
   </script>
 </body>

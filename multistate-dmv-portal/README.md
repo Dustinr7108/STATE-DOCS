@@ -2,7 +2,7 @@
 
 State document portal:
 - Stripe subscriptions with a 7-day trial, then $19.99/mo, when Stripe keys are set
-- Records wizard with a state-adapter pattern (Nevada, plus an example template)
+- Records wizard for marriage, divorce, death, property, your own bank records, criminal history, public court files, and Nevada motor-vehicle packets
 - PDF packet generator (pdf-lib) with a cover sheet and instructions
 - Static front end hosted on Netlify, with the API in Netlify Functions
 

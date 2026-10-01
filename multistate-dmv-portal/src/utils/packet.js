@@ -24,10 +24,11 @@ export async function buildPacket(adapter, requestType, data) {
   const files = [];
 
   for (const form of adapter.forms) {
-    const bytes = await readTemplate(form.templateFile);
-    const filled = form.fillStrategy === "acroform"
-      ? await fillAcroForm(bytes, form, data)
-      : await fillOverlay(bytes, form, data);
+    const filled = form.fillStrategy === "letter"
+      ? await makeLetter(adapter, data)
+      : form.fillStrategy === "acroform"
+        ? await fillAcroForm(await readTemplate(form.templateFile), form, data)
+        : await fillOverlay(await readTemplate(form.templateFile), form, data);
     files.push({
       name: `${form.code}.pdf`,
       title: form.title,
@@ -103,6 +104,12 @@ async function fillOverlay(bytes, form, data) {
   return pdf.save();
 }
 
+function labelFor(key) {
+  if (FIELD_LABELS[key]) return FIELD_LABELS[key];
+  const spaced = String(key).replace(/([A-Z])/g, " $1").replaceAll("_", " ");
+  return spaced.charAt(0).toUpperCase() + spaced.slice(1);
+}
+
 function valueFor(data, key) {
   if (key === "cityStateZip") return `${data.city || ""}, ${data.state || ""} ${data.zip || ""}`.trim();
   const value = data?.[key];
@@ -147,7 +154,9 @@ async function makeCover({ state, requestType, address, portalUrl, fees, require
   }
 
   heading("Fees to confirm", 13);
-  const feeLine = `Listed base fee: $${fees.base}${fees.certifiedAddOn ? `. Certified copy add-on: $${fees.certifiedAddOn}` : ""}. ${fees.currency || "USD"}. Agencies change fees; check the current amount before you pay.`;
+  const feeLine = fees?.base == null
+    ? (fees?.note || "The office sets the fee. Confirm the current amount before you pay.")
+    : `Listed base fee: $${fees.base}${fees.certifiedAddOn ? `. Certified copy add-on: $${fees.certifiedAddOn}` : ""}. ${fees.currency || "USD"}. Agencies change fees; check the current amount before you pay.`;
   body(feeLine);
 
   heading("Attachments", 13);
@@ -161,7 +170,7 @@ async function makeCover({ state, requestType, address, portalUrl, fees, require
   heading("Details you entered", 13);
   for (const [key, value] of Object.entries(details || {})) {
     if (value == null || String(value).trim() === "") continue;
-    body(`${FIELD_LABELS[key] || key}: ${value}`);
+    body(`${labelFor(key)}: ${value}`);
   }
 
   heading("Before you submit", 13);
@@ -170,7 +179,47 @@ async function makeCover({ state, requestType, address, portalUrl, fees, require
   return pdf.save();
 }
 
+async function makeLetter(adapter, data) {
+  const pdf = await PDFDocument.create();
+  let page = pdf.addPage([595, 842]);
+  const font = await pdf.embedFont(StandardFonts.Helvetica);
+  const bold = await pdf.embedFont(StandardFonts.HelveticaBold);
+  let y = 790;
+  const ensure = (needed = 40) => {
+    if (y >= needed) return;
+    page = pdf.addPage([595, 842]);
+    y = 790;
+  };
+  const heading = (text, size = 16) => {
+    ensure(size + 20);
+    y = drawBlock(page, bold, text, 40, y, { size, maxWidth: 515, lineGap: 3 });
+    y -= 6;
+  };
+  const body = (text, size = 11) => {
+    ensure(size + 16);
+    y = drawBlock(page, font, text, 40, y, { size, maxWidth: 515 });
+    y -= 8;
+  };
+
+  heading(adapter.letterTitle || `${adapter.displayName} request`);
+  body(adapter.letterIntro || "Please treat this letter as a request for the record described below. Your office decides eligibility, the official form, and the fee.");
+  if (adapter.submission?.address) body(`Send to:\n${adapter.submission.address}`);
+  if (typeof adapter.letterBody === "function") {
+    body(adapter.letterBody(data));
+  } else {
+    for (const [key, value] of Object.entries(data || {})) {
+      if (value == null || String(value).trim() === "") continue;
+      body(`${labelFor(key)}: ${value}`);
+    }
+  }
+  body("Signature: ________________________________");
+  body(`Printed name: ${data.yourName || data.fullName || ""}`);
+  body("This letter was prepared by a private assistance service. It is not a government form or a copy of the record.");
+  return pdf.save();
+}
+
 function buildNextSteps(adapter) {
+  if (Array.isArray(adapter.nextSteps) && adapter.nextSteps.length) return adapter.nextSteps;
   const steps = [
     "Review the packet and confirm it matches the current official instructions for this state.",
   ];
